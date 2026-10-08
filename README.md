@@ -11,7 +11,8 @@ Organizador de reembolsos médicos del buzón de Lau (Arval México), ejecutado 
 
 | Mejora | Dónde |
 | --- | --- |
-| Lee escaneos e imágenes sin OCR aparte ni créditos de AI Builder | rutina Clasificador (herramienta Read del agente) |
+| Lee escaneos e imágenes sin OCR aparte ni créditos de AI Builder | rutina Clasificador (herramienta Read del agente, Claude Haiku 5.5) |
+| Word, Excel, PowerPoint y PDF con texto se convierten a Markdown (MarkItDown) y se resuelven sin modelo | `clasificacion.texto_markitdown` |
 | Expedientes: agrupa documentos por cliente y evento, detecta faltantes (CFDI, factura PDF, receta, informe) | `reembolsos/expedientes.py` |
 | Alertas de calidad: RFC distinto al del catálogo, documento antiguo, CFDI sin total | `expedientes.alertas_documento` |
 | Candidatos a cliente: nombres leídos que no están en el catálogo, para aprobarlos con un clic | `catalogo.candidatos_en_texto` + panel |

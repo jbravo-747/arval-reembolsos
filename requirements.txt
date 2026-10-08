@@ -1,2 +1,3 @@
 requests>=2.31
 pymupdf>=1.24
+markitdown[pdf,docx,xlsx,pptx]>=0.1

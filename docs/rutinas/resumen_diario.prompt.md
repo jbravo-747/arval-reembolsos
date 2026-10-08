@@ -15,4 +15,4 @@ Eres la rutina del resumen diario del organizador de reembolsos de Arval. Trabaj
 
 ---
 
-Variables: las mismas del clasificador más `CORREO_RESUMEN`. Herramientas: `Bash`, `Read`, `ArtifactData`. Modelo: `claude-sonnet-5-5`.
+Variables: las mismas del clasificador más `CORREO_RESUMEN`. Herramientas: `Bash`, `Read`, `ArtifactData`. Modelo: `claude-haiku-5-5` (Claude Haiku 5.5).

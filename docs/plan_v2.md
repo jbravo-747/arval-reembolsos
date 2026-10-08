@@ -57,7 +57,7 @@ Decisión de Joel: Arval contrata un plan de Claude para empresas. El objetivo e
 | Concepto | Costo | Nota |
 | --- | --- | --- |
 | Claude para empresas | Según contrato con Anthropic (los planes de equipo se publican por asiento al mes; el plan Enterprise se cotiza) | Dos asientos: Joel y Lau |
-| Consumo de las rutinas | Incluido en el plan según sus límites de uso | Unas 12 corridas diarias del clasificador y 1 del resumen |
+| Consumo de las rutinas | Incluido en el plan según sus límites de uso | Unas 12 corridas diarias del clasificador y 1 del resumen, con Claude Haiku 5.5; XML, PDF con texto, Word y Excel se leen sin modelo (texto y MarkItDown), solo escaneos y fotos van a lectura visual |
 | AI Builder / Power Automate Premium | USD 0 | Ya no hace falta: Claude lee los documentos |
 | Power Automate flujo 1 | USD 0 | Sigue con la licencia de Microsoft 365 |
 | Entra ID / Graph | USD 0 | Incluido en Microsoft 365 |

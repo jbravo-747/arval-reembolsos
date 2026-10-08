@@ -26,4 +26,4 @@ Pasos, en orden:
 
 Variables de entorno que necesita la rutina: `M365_TENANT_ID`, `M365_CLIENT_ID`, `M365_CLIENT_SECRET`, `M365_USUARIO`, `RUTA_BASE`, `ARCHIVO_CONTROL`, `MODO`, `PANEL_URL`.
 Herramientas permitidas: `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `ArtifactData`.
-Modelo sugerido: `claude-sonnet-5-5` (lee PDF e imágenes); subir a `claude-opus-5-5` si los escaneos de baja calidad producen errores.
+Modelo: `claude-haiku-5-5` (Claude Haiku 5.5: lee PDF e imágenes y es el más económico; sostenible para unas 12 corridas diarias). Si en la primera semana los escaneos difíciles bajan el acierto, subir a `claude-sonnet-5-5` solo en esta rutina.

@@ -19,6 +19,15 @@ def test_preanalisis_cfdi(tmp_path: Path):
     assert pre["rfc"] == "PELA800101AB1" and pre["total"] == "1500.00"
 
 
+def test_preanalisis_excel_con_markitdown(tmp_path: Path):
+    from openpyxl import Workbook
+    f = tmp_path / "20261008_1000_abc123_lista.xlsx"
+    wb = Workbook(); ws = wb.active; ws.append(["Paciente", "Importe"]); ws.append(["ANA MARIA PEREZ LOPEZ", "500"]); wb.save(f)
+    pre = cl.preanalisis(f, CAT)
+    assert pre["metodo"] == "texto (MarkItDown)" and pre["texto_disponible"]
+    assert pre["cliente"] == "Ana María Pérez López"
+
+
 def test_preanalisis_ignorado(tmp_path: Path):
     f = tmp_path / "x.htm"
     f.write_text("<p>hola</p>")

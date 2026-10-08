@@ -46,8 +46,33 @@ def texto_pdf(ruta, paginas_max=3):
         return ""
 
 
+EXT_OFICINA = {".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt", ".rtf", ".txt", ".csv", ".json"}
+MAX_CARACTERES = 20000  # lo que se conserva de un documento largo para comparar nombres
+
+
+def _hay_pymupdf():
+    try:
+        import pymupdf  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def texto_markitdown(ruta):
+    """Word, Excel, PowerPoint, texto: Markdown compacto con MarkItDown (Microsoft). Vacío si no está instalado o falla."""
+    try:
+        from markitdown import MarkItDown
+    except ImportError:
+        return ""
+    try:
+        return (MarkItDown().convert(str(ruta)).text_content or "")[:MAX_CARACTERES]
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def preanalisis(ruta_local, catalogo, paginas_max=3):
-    """Lo que se puede decidir sin ver el documento: por XML o por capa de texto."""
+    """Lo que se puede decidir sin ver el documento: por XML, por capa de texto del PDF o por conversión a Markdown
+    de documentos de Office. Solo los escaneos y las imágenes requieren que el agente vea el archivo."""
     ruta = Path(ruta_local)
     ext = ruta.suffix.lower()
     pre = {"metodo": "", "cliente": None, "confianza": None, "motivo": "", "candidatos": [], "rfc": "", "total": "",
@@ -62,9 +87,14 @@ def preanalisis(ruta_local, catalogo, paginas_max=3):
         texto = f"{nombre} {rfc}"
     elif ext == ".pdf":
         texto = texto_pdf(ruta, paginas_max)
+        if not texto.strip() and not _hay_pymupdf():
+            texto = texto_markitdown(ruta)   # respaldo solo si PyMuPDF no está instalado
         pre["metodo"] = "texto PDF" if texto.strip() else "escaneado: requiere lectura del agente"
     elif ext in EXT_IMAGEN:
         pre["metodo"] = "imagen: requiere lectura del agente"
+    elif ext in EXT_OFICINA:
+        texto = texto_markitdown(ruta)
+        pre["metodo"] = "texto (MarkItDown)" if texto.strip() else "formato no leído"
     else:
         pre["metodo"] = "formato no leído"
     if texto.strip():

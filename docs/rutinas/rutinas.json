@@ -1,5 +1,5 @@
 {
-  "_nota": "Plantillas para crear las rutinas con la herramienta RemoteTrigger (action: create) desde una sesión de Claude Code en la cuenta de empresa. Sustituir ENVIRONMENT_ID, REPO_URL, el UUID y el prompt (docs/rutinas/*.prompt.md). Los horarios están en UTC: 14:00-01:00 UTC = 8:00-19:00 Ciudad de México.",
+  "_nota": "Modelo: claude-haiku-5-5 (Claude Haiku 5.5, el que muestra el selector de la app). Si RemoteTrigger rechaza el id, listar los modelos disponibles en la cuenta y usar el id exacto de Haiku 5.5; alternativa claude-haiku-4-5-20251001. Plantillas para crear las rutinas con la herramienta RemoteTrigger (action: create) desde una sesión de Claude Code en la cuenta de empresa. Sustituir ENVIRONMENT_ID, REPO_URL, el UUID y el prompt (docs/rutinas/*.prompt.md). Los horarios están en UTC: 14:00-01:00 UTC = 8:00-19:00 Ciudad de México.",
   "clasificador": {
     "name": "Reembolsos: clasificador",
     "cron_expression": "0 14-23,0-1 * * 1-5",
@@ -8,7 +8,7 @@
       "ccr": {
         "environment_id": "ENVIRONMENT_ID",
         "session_context": {
-          "model": "claude-sonnet-5-5",
+          "model": "claude-haiku-5-5",
           "sources": [{"git_repository": {"url": "REPO_URL"}}],
           "allowed_tools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "ArtifactData"]
         },
@@ -25,7 +25,7 @@
       "ccr": {
         "environment_id": "ENVIRONMENT_ID",
         "session_context": {
-          "model": "claude-sonnet-5-5",
+          "model": "claude-haiku-5-5",
           "sources": [{"git_repository": {"url": "REPO_URL"}}],
           "allowed_tools": ["Bash", "Read", "ArtifactData"]
         },

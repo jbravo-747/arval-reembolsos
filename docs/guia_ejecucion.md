@@ -9,7 +9,7 @@ Lista en `docs/prerrequisitos_ernesto.md`. No se avanza a los pasos 3 en adelant
 ## Paso 1. Repositorio
 
 1. Subir este repositorio a GitHub (privado) y conectarlo en Claude Code de la cuenta de empresa.
-2. En la sesión: `pip install -r requirements.txt && python -m pytest -q` → 21 pruebas en verde.
+2. En la sesión: `pip install -r requirements.txt && python -m pytest -q` → 22 pruebas en verde.
 
 ## Paso 2. Excel de control (Joel, 10 minutos)
 
@@ -50,6 +50,8 @@ Colecciones del panel y quién escribe:
 | `entradas` | panel (archivos soltados; el archivo va al almacén `assets`) | rutina (`cli.py ingresar`, marca `ingresado`/`clasificado`/`error` y borra el asset) |
 
 ## Paso 5. Rutina Clasificador (Joel con Claude)
+
+Modelo de ambas rutinas: Claude Haiku 5.5 (`claude-haiku-5-5`; si la API rechaza el id, usar el id exacto que liste la cuenta), elegido para que la operación sea sostenible con la carga conocida (unos 13 documentos al día, 12 corridas). El análisis previo (XML, PDF con texto, Word y Excel vía MarkItDown) resuelve lo que puede sin que el modelo vea el archivo; solo los escaneos y fotos van a lectura visual. Si el acierto en escaneos difíciles no alcanza, cambiar solo la rutina Clasificador a `claude-sonnet-5-5`.
 
 1. Pedir a Claude: "crea una rutina con `docs/rutinas/rutinas.json → clasificador`, repositorio <URL>, entorno <id>, prompt de `docs/rutinas/clasificador.prompt.md`, con el conector Microsoft 365 y las variables de entorno". Claude usa la herramienta RemoteTrigger.
 2. Primera semana con `MODO=propone`: la rutina clasifica y publica en el panel, pero no mueve ni escribe en Excel. Revisar con Lau la tasa de acierto en el panel.
