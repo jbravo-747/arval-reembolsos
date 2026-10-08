@@ -11,3 +11,5 @@ __pycache__/
 *.xml
 !tests/datos/*.xml
 .pytest_cache/
+!powerautomate/*.zip
+powerautomate/salida/

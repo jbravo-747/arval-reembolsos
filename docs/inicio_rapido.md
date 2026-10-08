@@ -11,6 +11,10 @@ pip install -r requirements.txt
 python -m pytest -q        # debe terminar con 22 passed
 ```
 
+## 1b. Para implementarlo en el entorno de Lau desde cero
+
+Seguir `docs/implementacion_lau.md`: paso 0 (cuenta de servicio, licencias, Entra ID, catálogo), 1 (OneDrive y Excel generado con `powerautomate/generar.py --solo-excel`), 2 (Outlook y redirección), 3 (flujo 1 de Power Automate), 4 (Claude y panel), 5 (rutinas en modo propone), 6 (producción), 7 (operación).
+
 ## 2. Qué se puede hacer de inmediato (sin credenciales)
 
 - Leer `docs/guia_ejecucion.md` (pasos en la cuenta de Claude para empresas) y `docs/plan_v2.md` (plan completo).

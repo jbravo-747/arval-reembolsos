@@ -39,7 +39,10 @@ python -m pytest -q
 
 - `docs/plan_v2.md`: plan completo, fases, costos y riesgos.
 - `docs/prerrequisitos_ernesto.md`: lo que debe hacer el administrador del tenant.
-- `docs/guia_ejecucion.md`: pasos para ponerlo en marcha en la cuenta de empresa.
+- `docs/implementacion_lau.md`: **procedimiento completo desde el paso 0** para instalarlo en producción en el entorno de Lau (cuenta de servicio, OneDrive y Excel, Outlook y redirección, flujo 1, Claude, rutinas, operación).
+- `docs/power_automate.md`: qué se conserva de Power Automate, paquetes y generadores, y cómo pasarlo al buzón de Lau.
+- `docs/guia_ejecucion.md`: pasos de la parte de Claude en la cuenta de empresa.
+- `powerautomate/`: generadores de Excel y flujos y los paquetes .zip instalados hoy.
 - `docs/rutinas/`: prompts y plantillas de las dos rutinas.
 - `panel/panel.html`: el artifact del panel.
 - `CLAUDE.md`: reglas e instrucciones para el agente.
