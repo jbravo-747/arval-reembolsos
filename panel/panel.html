@@ -140,6 +140,16 @@ a{color:var(--accent)}
         </div>
       </section>
 
+      <section id="secResumen">
+        <div class="sec-head"><h2>Resumen del día</h2><small class="ts" id="resumenHora"></small></div>
+        <div id="resumenCuerpo" class="vacio">La rutina del resumen diario deja aquí lo mismo que envía por correo a las 8:00: la narrativa, los conteos y los expedientes con faltantes.</div>
+      </section>
+
+      <section id="secActividad">
+        <div class="sec-head"><h2>Actividad</h2><span class="muted">últimos movimientos</span></div>
+        <div id="bitacora" class="vacio">Aquí se registra cada corrida: qué se movió, qué quedó en prioridad 1, qué falló.</div>
+      </section>
+
       <section>
         <div class="sec-head"><h2>Expedientes</h2><span class="muted" id="expNota"></span></div>
         <div class="lista" id="expedientes"><div class="vacio">Los expedientes agrupan los documentos de un cliente recibidos en 10 días y muestran qué falta (CFDI, factura PDF, receta, informe).</div></div>
@@ -352,6 +362,30 @@ a{color:var(--accent)}
     db.collection("expedientes").limit(300).onSnapshot((s) => { estado.expedientes = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarExpedientes(); pintarKpis(); }, err);
     db.collection("candidatos").limit(300).onSnapshot((s) => { estado.candidatos = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarCandidatos(); pintarKpis(); }, err);
     db.collection("entradas").limit(200).onSnapshot((s) => { estado.entradas = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarEntradas(); }, err);
+    db.doc("resumen/ultimo").onSnapshot((s) => { pintarResumen(s.exists ? s.data() : null); }, err);
+    db.collection("bitacora").orderBy("hora", "desc").limit(40).onSnapshot((s) => { pintarBitacora(s.docs.map(d => d.data())); }, err);
+  }
+
+  function pintarResumen(r){
+    const cont = $("resumenCuerpo");
+    if (!r) return;
+    cont.classList.remove("vacio");
+    $("resumenHora").textContent = `${horaCorta(r.hora)} · ${r.enviado ? "enviado a Lau" : "no enviado (modo propone)"}`;
+    const conteos = Object.entries(r.conteos || {}).filter(([, n]) => n > 0).map(([k, n]) => `<span class="chip">${esc(k)}: <b>${n}</b></span>`).join(" ");
+    const narr = (r.narrativa || "").split("\n").filter(l => l.trim()).map(l => `<p style="margin:0 0 6px">${esc(l)}</p>`).join("");
+    const abiertos = (r.expedientes_abiertos || []).slice(0, 8).map(e => `<li><b>${esc(e.cliente)}</b> · ${esc(e.estado)} · falta ${esc((e.faltantes || []).join(", ") || "nada")} · ${e.dias_sin_movimiento} día(s)</li>`).join("");
+    cont.innerHTML = `<div class="t" style="font-weight:600;margin-bottom:6px">${esc(r.asunto || "")}</div>
+      ${narr ? `<div style="border-left:3px solid var(--accent);padding-left:10px;margin-bottom:8px">${narr}</div>` : ""}
+      <div class="semaforo" style="margin-bottom:8px">${conteos}</div>
+      ${abiertos ? `<ul style="margin:0;padding-left:18px;font-size:.9rem">${abiertos}</ul>` : ""}`;
+  }
+
+  function pintarBitacora(eventos){
+    const cont = $("bitacora");
+    if (!eventos.length) return;
+    cont.classList.remove("vacio");
+    const icono = { movido: "ok", clasificado: "ok", ingresado: "ok", corrida: "", propuesto: "warn", "prioridad 1": "warn", error: "crit" };
+    cont.innerHTML = `<div class="lista" style="gap:4px">` + eventos.map(e => `<div class="entrada" style="padding:6px 10px"><span style="min-width:0;overflow-wrap:anywhere"><span class="chip ${icono[e.evento] || ""}" style="padding:1px 8px;margin-right:6px"><span class="dot"></span>${esc(e.evento)}</span>${esc(e.detalle || "")}</span><small class="ts">${horaCorta(e.hora)}</small></div>`).join("") + `</div>`;
   }
 
   async function iniciar(){

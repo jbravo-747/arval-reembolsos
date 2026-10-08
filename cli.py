@@ -232,6 +232,22 @@ def _registros_con_resultados(registros, resultados):
     return vista
 
 
+def _bitacora(cfg, resultados, movidos, errores, altas):
+    """Eventos de esta corrida para la bitácora del panel (solo metadatos)."""
+    hora = ahora().isoformat(timespec="seconds")
+    eventos = [{"hora": hora, "rutina": "clasificador", "evento": "corrida",
+                "detalle": f"{len(resultados)} analizados, {movidos} movidos, {altas} altas, {len(errores)} errores (modo {cfg.modo})"}]
+    for r in resultados:
+        if r["cliente"]:
+            eventos.append({"hora": hora, "rutina": "clasificador", "evento": "movido" if cfg.modo == "aplica" else "propuesto",
+                            "detalle": f"{r['nombre_guardado'][:60]} → {r['cliente']} ({r['tipo_documento']}, confianza {r['confianza'].lower()})"})
+        elif r["prioridad"] == 1:
+            eventos.append({"hora": hora, "rutina": "clasificador", "evento": "prioridad 1",
+                            "detalle": f"{r['nombre_guardado'][:60]}: {r['motivo'] or 'sin cliente'}"})
+    eventos += [{"hora": hora, "rutina": "clasificador", "evento": "error", "detalle": e[:160]} for e in errores]
+    return eventos[:60]
+
+
 def _snapshot(cfg, resultados, movidos, errores, expedientes, altas=0):
     por_prioridad = {1: 0, 2: 0, 3: 0}
     for r in resultados:
@@ -254,6 +270,7 @@ def _snapshot(cfg, resultados, movidos, errores, expedientes, altas=0):
                        for r in resultados],
         "candidatos": [{"nombre": c, "archivos": a} for c, a in candidatos.items()],
         "expedientes": [{**e, "carpeta_url": cfg.url_carpeta(f"{cfg.clientes}/{e['cliente']}/{e['inicio'][:7]}")} for e in expedientes],
+        "bitacora": _bitacora(cfg, resultados, movidos, errores, altas),
         "latido": {"rutina": "clasificador", "hora": ahora().isoformat(timespec="seconds"),
                    "resultado": "error" if errores else "ok", "detalle": f"{len(resultados)} analizados, {movidos} movidos"},
     }
@@ -281,7 +298,14 @@ def resumen(cfg, preparar=False):
     narrativa = (cfg.trabajo / "narrativa.txt").read_text(encoding="utf-8") if (cfg.trabajo / "narrativa.txt").exists() else ""
     asunto, html, pendientes = armar_correo(registros, fecha, narrativa, expedientes, os.environ.get("PANEL_URL", ""))
     (cfg.trabajo / "resumen.html").write_text(html, encoding="utf-8")
-    print("asunto:", asunto, "| registros:", len(pendientes))
+    from reembolsos.resumen import agrupar
+    _, grupos = agrupar(registros)
+    _escribir_json(cfg.trabajo / "resumen_panel.json", {
+        "hora": ahora().isoformat(timespec="seconds"), "fecha": fecha, "asunto": asunto, "narrativa": narrativa.strip(),
+        "enviado": cfg.modo == "aplica", "conteos": {k: len(v) for k, v in grupos.items()},
+        "expedientes_abiertos": [{"cliente": e["cliente"], "estado": e["estado"], "faltantes": e["faltantes"],
+                                  "dias_sin_movimiento": e["dias_sin_movimiento"]} for e in expedientes if e["estado"] != "completo"][:20]})
+    print("asunto:", asunto, "| registros:", len(pendientes), "| trabajo/resumen_panel.json listo para el panel")
     if cfg.modo != "aplica":
         print("modo propone: el correo quedó en trabajo/resumen.html, no se envió")
         return

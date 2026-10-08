@@ -226,6 +226,79 @@
           "20261008_0901_ej01_factura_ejemplo.pdf"
         ]
       }
+    },
+    {
+      "op": "set",
+      "collection": "resumen",
+      "doc_id": "ultimo",
+      "data": {
+        "hora": "2026-10-08T08:00:00-06:00",
+        "fecha": "08/10/2026",
+        "asunto": "EJEMPLO · Reembolsos 08/10/2026: 2 por decidir, 1 por confirmar, 1 expedientes con faltantes",
+        "narrativa": "EJEMPLO. Hoy hay dos documentos que requieren tu decisión: un escaneo cuyo nombre no está en el catálogo y un informe con coincidencia parcial.\nEl expediente de Cliente Ejemplo Uno lleva tres días sin receta ni informe; conviene pedirlos hoy (hay un borrador en el buzón).\nRecomendación: aprobar al candidato PERSONA EJEMPLO CUATRO si es cliente, para que sus próximos documentos se clasifiquen solos.",
+        "enviado": true,
+        "conteos": {
+          "Prioridad 1: decidir hoy": 2,
+          "Prioridad 2: confirmar cliente": 1,
+          "Recibidos sin pendientes": 3,
+          "No son reembolsos": 1
+        },
+        "expedientes_abiertos": [
+          {
+            "cliente": "Cliente Ejemplo Uno",
+            "estado": "incompleto",
+            "faltantes": [
+              "receta",
+              "informe médico"
+            ],
+            "dias_sin_movimiento": 3
+          }
+        ]
+      }
+    },
+    {
+      "op": "set",
+      "collection": "bitacora",
+      "doc_id": "2026-10-08T17-00-00_1",
+      "data": {
+        "hora": "2026-10-08T17:00:00-06:00",
+        "rutina": "clasificador",
+        "evento": "corrida",
+        "detalle": "EJEMPLO: 6 analizados, 3 movidos, 0 altas, 0 errores (modo aplica)"
+      }
+    },
+    {
+      "op": "set",
+      "collection": "bitacora",
+      "doc_id": "2026-10-08T17-00-00_2",
+      "data": {
+        "hora": "2026-10-08T17:00:01-06:00",
+        "rutina": "clasificador",
+        "evento": "movido",
+        "detalle": "EJEMPLO: 20261008_1130_ej03_cfdi_ejemplo.xml → Cliente Ejemplo Dos (CFDI factura, confianza alta)"
+      }
+    },
+    {
+      "op": "set",
+      "collection": "bitacora",
+      "doc_id": "2026-10-08T17-00-00_3",
+      "data": {
+        "hora": "2026-10-08T17:00:02-06:00",
+        "rutina": "clasificador",
+        "evento": "prioridad 1",
+        "detalle": "EJEMPLO: 20261008_0901_ej01_factura_ejemplo.pdf: nombre leído no está en el catálogo"
+      }
+    },
+    {
+      "op": "set",
+      "collection": "bitacora",
+      "doc_id": "2026-10-08T08-00-00_1",
+      "data": {
+        "hora": "2026-10-08T08:00:00-06:00",
+        "rutina": "resumen",
+        "evento": "resumen",
+        "detalle": "EJEMPLO: Reembolsos 08/10/2026: 2 por decidir, 1 por confirmar"
+      }
     }
   ]
 }
