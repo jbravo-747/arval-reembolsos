@@ -1,0 +1,295 @@
+<title>Panel de reembolsos</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Layout: cabecera con semáforo, franja de indicadores, columna principal (pendientes) y columna lateral (expedientes, candidatos, acciones, pregunta). */
+:root{
+  --bg:#f3f6f5; --surface:#ffffff; --surface-2:#e9efed; --fg:#15211f; --muted:#5b6d69; --line:#d3dcd9;
+  --accent:#0f6e6a; --accent-ink:#ffffff; --accent-soft:#d9eeec;
+  --ok:#2e7d4f; --ok-soft:#dbf0e3; --warn:#b26a00; --warn-soft:#fbe9c7; --crit:#b3261e; --crit-soft:#f8dcd9;
+  --display:"Manrope",system-ui,sans-serif; --body:"Source Sans 3",system-ui,sans-serif;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0f1716; --surface:#172221; --surface-2:#1f2c2a; --fg:#e8efed; --muted:#9db0ab; --line:#2c3b38;
+  --accent:#5fc2bb; --accent-ink:#06211f; --accent-soft:#163a38;
+  --ok:#6ccf93; --ok-soft:#153726; --warn:#f2b85a; --warn-soft:#3d2c0c; --crit:#ff8d85; --crit-soft:#431b18;
+  color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0f1716; --surface:#172221; --surface-2:#1f2c2a; --fg:#e8efed; --muted:#9db0ab; --line:#2c3b38;
+  --accent:#5fc2bb; --accent-ink:#06211f; --accent-soft:#163a38;
+  --ok:#6ccf93; --ok-soft:#153726; --warn:#f2b85a; --warn-soft:#3d2c0c; --crit:#ff8d85; --crit-soft:#431b18;
+  color-scheme:dark }
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:18px 40px;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+h1{font-size:1.5rem;font-weight:800;letter-spacing:-.01em}
+h2{font-size:1.05rem;font-weight:700}
+.muted{color:var(--muted)}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;justify-content:space-between}
+.semaforo{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:.85rem;font-weight:600;background:var(--surface-2);color:var(--fg);border:1px solid var(--line)}
+.chip .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.chip.ok .dot{background:var(--ok)} .chip.warn .dot{background:var(--warn)} .chip.crit .dot{background:var(--crit)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;min-width:0}
+.kpi .n{font-family:var(--display);font-size:1.7rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi .l{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:4px}
+.kpi.p1 .n{color:var(--crit)} .kpi.p2 .n{color:var(--warn)}
+.cols{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px}
+@media (max-width:860px){.cols{grid-template-columns:1fr}}
+section{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.sec-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.filtros{display:flex;gap:6px;flex-wrap:wrap}
+.filtros button{font:inherit;font-size:.82rem;font-weight:600;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);cursor:pointer}
+.filtros button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.lista{display:flex;flex-direction:column;gap:8px}
+.item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.item.confirmado{opacity:.6}
+.prio{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:.95rem}
+.prio.p1{background:var(--crit-soft);color:var(--crit)} .prio.p2{background:var(--warn-soft);color:var(--warn)} .prio.p3{background:var(--ok-soft);color:var(--ok)}
+.item .t{font-weight:600;word-break:break-word}
+.item .m{font-size:.86rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px}
+.item .alerta{font-size:.86rem;color:var(--warn)}
+.acciones{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+select,input[type=text],input[type=email],textarea{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0;max-width:100%}
+textarea{width:100%;resize:vertical}
+button.btn{font:inherit;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
+button.btn.sec{background:transparent;color:var(--accent)}
+button.btn:disabled{opacity:.5;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.exp{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.exp .fila{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;align-items:baseline}
+.estado{font-size:.78rem;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
+.estado.incompleto{background:var(--crit-soft);color:var(--crit)} .estado.completo{background:var(--ok-soft);color:var(--ok)} .estado.revision{background:var(--warn-soft);color:var(--warn)}
+.vacio{padding:18px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);text-align:center}
+.aviso{padding:10px 12px;border-radius:8px;background:var(--warn-soft);color:var(--fg);font-size:.9rem}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:.9rem;opacity:0;transition:opacity .2s}
+.toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+.respuesta{white-space:pre-wrap;background:var(--surface-2);border-radius:8px;padding:10px 12px;font-size:.93rem}
+small.ts{color:var(--muted);font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Panel de reembolsos</h1>
+      <div class="muted">Buzón de Lau · lo que las automatizaciones dejaron pendiente y lo que puedes decidir aquí</div>
+    </div>
+    <div class="semaforo" id="semaforo">
+      <span class="chip"><span class="dot"></span>Clasificador: sin datos</span>
+      <span class="chip"><span class="dot"></span>Resumen diario: sin datos</span>
+    </div>
+  </header>
+
+  <div id="avisoDb" class="aviso" hidden>Esta vista no puede conectarse a los datos del panel. Ábrelo desde tu cuenta de la organización.</div>
+
+  <div class="kpis" id="kpis">
+    <div class="kpi p1"><div class="n" id="k-p1">–</div><div class="l">Prioridad 1 · decidir</div></div>
+    <div class="kpi p2"><div class="n" id="k-p2">–</div><div class="l">Prioridad 2 · confirmar</div></div>
+    <div class="kpi"><div class="n" id="k-inc">–</div><div class="l">Expedientes con faltantes</div></div>
+    <div class="kpi"><div class="n" id="k-mov">–</div><div class="l">Movidos en la última corrida</div></div>
+    <div class="kpi"><div class="n" id="k-cand">–</div><div class="l">Candidatos a cliente</div></div>
+  </div>
+
+  <div class="cols">
+    <section>
+      <div class="sec-head">
+        <h2>Pendientes</h2>
+        <div class="filtros" role="group" aria-label="Filtrar por prioridad">
+          <button type="button" data-f="todos" aria-pressed="true">Todos</button>
+          <button type="button" data-f="1" aria-pressed="false">Prioridad 1</button>
+          <button type="button" data-f="2" aria-pressed="false">Prioridad 2</button>
+          <button type="button" data-f="3" aria-pressed="false">Informativos</button>
+        </div>
+      </div>
+      <div class="lista" id="pendientes"><div class="vacio">Todavía no hay documentos pendientes. La rutina clasificadora publica aquí cada hora en horario hábil; cuando lo haga verás cada documento con su prioridad y podrás confirmar el cliente.</div></div>
+    </section>
+
+    <div style="display:flex;flex-direction:column;gap:18px;min-width:0">
+      <section>
+        <div class="sec-head"><h2>Acciones</h2><small class="ts" id="ultimaCorrida"></small></div>
+        <div class="acciones">
+          <button class="btn" type="button" id="btnProcesar">Procesar ahora</button>
+          <span class="muted" id="procesarNota">Lo atiende la siguiente corrida de la rutina.</span>
+        </div>
+      </section>
+
+      <section>
+        <div class="sec-head"><h2>Expedientes</h2><span class="muted" id="expNota"></span></div>
+        <div class="lista" id="expedientes"><div class="vacio">Los expedientes agrupan los documentos de un cliente recibidos en 10 días y muestran qué falta (CFDI, factura PDF, receta, informe).</div></div>
+      </section>
+
+      <section>
+        <div class="sec-head"><h2>Candidatos a cliente</h2></div>
+        <div class="lista" id="candidatos"><div class="vacio">Nombres leídos en documentos que no están en el catálogo. Apruébalos para que entren a la hoja Clientes.</div></div>
+      </section>
+
+      <section id="secPregunta">
+        <div class="sec-head"><h2>Pregunta al panel</h2></div>
+        <label for="pregunta" class="muted">Sobre lo pendiente y los expedientes, por ejemplo: "¿a quién le falta receta?"</label>
+        <textarea id="pregunta" rows="2"></textarea>
+        <div class="acciones"><button class="btn" type="button" id="btnPreguntar">Preguntar</button><span class="muted" id="preguntaNota"></span></div>
+        <div class="respuesta" id="respuesta" hidden></div>
+      </section>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+  const estado = { pendientes: [], expedientes: [], candidatos: [], catalogo: [], monitor: {}, filtro: "todos", confirmados: new Set(), uid: null };
+  let db = null, sample = null;
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const idSeguro = (s) => String(s ?? "").replace(/[^A-Za-z0-9_\-.~:@+]/g, "_").slice(0, 180);
+  const toast = (msg) => { const t = $("toast"); t.textContent = msg; t.classList.add("on"); setTimeout(() => t.classList.remove("on"), 2500); };
+  const horaCorta = (iso) => { const d = iso ? new Date(iso) : null; return d && !isNaN(d) ? d.toLocaleString("es-MX", {day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit"}) : "sin dato"; };
+
+  function pintarSemaforo(){
+    const ahora = Date.now();
+    const chips = [["clasificador","Clasificador", 3], ["resumen","Resumen diario", 30]].map(([k, etiqueta, horasMax]) => {
+      const m = estado.monitor[k];
+      if (!m) return `<span class="chip"><span class="dot"></span>${etiqueta}: sin datos</span>`;
+      const edadH = (ahora - new Date(m.hora).getTime()) / 36e5;
+      const clase = m.resultado === "error" ? "crit" : (edadH > horasMax ? "warn" : "ok");
+      const texto = m.resultado === "error" ? "con error" : (edadH > horasMax ? `sin corrida desde ${horaCorta(m.hora)}` : `ok · ${horaCorta(m.hora)}`);
+      return `<span class="chip ${clase}" title="${esc(m.detalle || "")}"><span class="dot"></span>${etiqueta}: ${texto}</span>`;
+    });
+    $("semaforo").innerHTML = chips.join("");
+    const c = estado.monitor.clasificador;
+    $("ultimaCorrida").textContent = c ? `Última corrida: ${horaCorta(c.hora)} · ${c.detalle || ""}` : "";
+  }
+
+  function pintarKpis(){
+    const p = estado.pendientes;
+    $("k-p1").textContent = p.filter(x => x.prioridad === 1).length;
+    $("k-p2").textContent = p.filter(x => x.prioridad === 2).length;
+    $("k-inc").textContent = estado.expedientes.filter(e => e.estado === "incompleto").length;
+    const c = estado.monitor.clasificador; $("k-mov").textContent = c && c.kpis ? (c.kpis.movidos ?? "–") : "–";
+    $("k-cand").textContent = estado.candidatos.filter(x => !x.descartado && !x.aprobado).length;
+  }
+
+  function opcionesCatalogo(sel){
+    const lista = estado.catalogo.length ? estado.catalogo : [];
+    return `<option value="">Elegir cliente…</option>` + lista.map(n => `<option ${n === sel ? "selected" : ""}>${esc(n)}</option>`).join("");
+  }
+
+  function pintarPendientes(){
+    const cont = $("pendientes");
+    let lista = estado.pendientes.slice().sort((a, b) => a.prioridad - b.prioridad || String(b.fecha + b.hora).localeCompare(String(a.fecha + a.hora)));
+    if (estado.filtro !== "todos") lista = lista.filter(x => String(x.prioridad) === estado.filtro);
+    if (!lista.length) { cont.innerHTML = `<div class="vacio">Nada en este filtro.</div>`; return; }
+    cont.innerHTML = lista.map(x => {
+      const conf = estado.confirmados.has(x.id);
+      const alertas = (x.alertas || []).map(a => `<div class="alerta">⚠ ${esc(a)}</div>`).join("");
+      const cands = (x.candidatos || []).length ? `<span>candidato: ${esc(x.candidatos.join(" | "))}</span>` : "";
+      return `<div class="item ${conf ? "confirmado" : ""}" data-id="${esc(x.id)}">
+        <div class="prio p${x.prioridad}" title="Prioridad ${x.prioridad}">${x.prioridad}</div>
+        <div>
+          <div class="t">${esc(x.id)}</div>
+          <div class="m"><span>${esc(x.cliente || "sin cliente")}</span><span>${esc(x.tipo || "")}</span><span>confianza ${esc((x.confianza || "").toLowerCase())}</span><span>${esc(x.estado || "")}</span><span>${esc(x.fecha || "")} ${esc(x.hora || "")}</span>${cands}</div>
+          ${x.motivo ? `<div class="m"><span>${esc(x.motivo)}</span></div>` : ""}
+          ${alertas}
+          ${x.prioridad <= 2 && !conf ? `<div class="acciones"><select aria-label="Cliente para ${esc(x.id)}">${opcionesCatalogo(x.cliente || (x.candidatos || [])[0] || "")}</select><button class="btn" type="button" data-accion="confirmar">Confirmar cliente</button></div>` : ""}
+          ${conf ? `<div class="m"><span>Confirmado. La rutina lo aplicará en su siguiente corrida.</span></div>` : ""}
+        </div></div>`;
+    }).join("");
+  }
+
+  function pintarExpedientes(){
+    const cont = $("expedientes");
+    const lista = estado.expedientes.slice().sort((a, b) => ({incompleto:0, "en revisión":1, completo:2}[a.estado] - {incompleto:0, "en revisión":1, completo:2}[b.estado]) || b.dias_sin_movimiento - a.dias_sin_movimiento);
+    $("expNota").textContent = lista.length ? `${lista.filter(e => e.estado !== "completo").length} abiertos de ${lista.length}` : "";
+    if (!lista.length) return;
+    cont.innerHTML = lista.slice(0, 30).map(e => {
+      const cls = e.estado === "en revisión" ? "revision" : e.estado;
+      const faltan = (e.faltantes || []).length ? `Falta: ${esc(e.faltantes.join(", "))}` : "Documentos esenciales completos";
+      const archivos = (e.archivos || []).slice(0, 6).map(a => a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">${esc(a.tipo || a.nombre)}</a>` : esc(a.tipo || a.nombre)).join(" · ");
+      return `<div class="exp"><div class="fila"><strong>${esc(e.cliente)}</strong><span class="estado ${cls}">${esc(e.estado)}</span></div>
+        <div class="muted">${e.documentos} documento(s) · ${e.inicio} a ${e.ultimo} · ${e.dias_sin_movimiento} día(s) sin movimiento</div>
+        <div>${faltan}</div><div class="muted" style="font-size:.86rem">${archivos}</div></div>`;
+    }).join("");
+  }
+
+  function pintarCandidatos(){
+    const cont = $("candidatos");
+    const lista = estado.candidatos.filter(c => !c.descartado && !c.aprobado);
+    if (!lista.length) { cont.innerHTML = `<div class="vacio">No hay candidatos pendientes de revisar.</div>`; return; }
+    cont.innerHTML = lista.map(c => `<div class="exp" data-cid="${esc(c._id)}">
+      <div class="fila"><strong>${esc(c.nombre)}</strong><span class="muted">${(c.archivos || []).length} archivo(s)</span></div>
+      <div class="acciones"><input type="email" placeholder="correo (opcional)" aria-label="Correo de ${esc(c.nombre)}"><input type="text" placeholder="RFC (opcional)" aria-label="RFC de ${esc(c.nombre)}" style="width:150px">
+      <button class="btn" type="button" data-accion="aprobar">Aprobar</button><button class="btn sec" type="button" data-accion="descartar">Descartar</button></div></div>`).join("");
+  }
+
+  async function confirmar(id, cliente){
+    if (!db) return toast("Sin conexión a los datos");
+    if (!cliente) return toast("Elige un cliente");
+    try {
+      await db.collection("decisiones").add({ archivo: id, cliente, por: estado.uid, hora: new Date().toISOString(), aplicada: false });
+      estado.confirmados.add(id); pintarPendientes(); toast("Cliente confirmado");
+    } catch (e) { toast(e.code === "quota_exceeded" ? "La base del panel está llena; avisa a Joel" : "No se pudo guardar, intenta de nuevo"); }
+  }
+  async function aprobar(cid, nombre, correo, rfc){
+    if (!db) return toast("Sin conexión a los datos");
+    try {
+      await db.collection("altas").add({ nombre, correo: correo || "", rfc: (rfc || "").toUpperCase(), alias: "", por: estado.uid, hora: new Date().toISOString(), aplicada: false });
+      await db.doc("candidatos/" + cid).update({ aprobado: true });
+      toast("Alta enviada al catálogo");
+    } catch (e) { toast("No se pudo guardar, intenta de nuevo"); }
+  }
+  async function descartar(cid){
+    if (!db) return;
+    try { await db.doc("candidatos/" + cid).update({ descartado: true }); toast("Candidato descartado"); } catch (e) { toast("No se pudo guardar"); }
+  }
+
+  document.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button"); if (!b) return;
+    if (b.dataset.f) { estado.filtro = b.dataset.f; document.querySelectorAll(".filtros button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); pintarPendientes(); return; }
+    if (b.dataset.accion === "confirmar") { const it = b.closest(".item"); confirmar(it.dataset.id, it.querySelector("select").value); }
+    if (b.dataset.accion === "aprobar") { const c = b.closest("[data-cid]"); const [correo, rfc] = c.querySelectorAll("input"); aprobar(c.dataset.cid, c.querySelector("strong").textContent, correo.value.trim(), rfc.value.trim()); }
+    if (b.dataset.accion === "descartar") { descartar(b.closest("[data-cid]").dataset.cid); }
+  });
+
+  $("btnProcesar").addEventListener("click", async () => {
+    if (!db) return toast("Sin conexión a los datos");
+    try { await db.collection("solicitudes").add({ tipo: "procesar", por: estado.uid, hora: new Date().toISOString(), atendida: false }); $("procesarNota").textContent = "Solicitud registrada; la siguiente corrida la atiende."; toast("Solicitud enviada"); }
+    catch (e) { toast("No se pudo registrar la solicitud"); }
+  });
+
+  $("btnPreguntar").addEventListener("click", async () => {
+    const q = $("pregunta").value.trim(); if (!q) return;
+    if (!sample) { $("preguntaNota").textContent = "Preguntar a Claude no está disponible en esta vista."; return; }
+    const datos = { kpis: estado.monitor.clasificador?.kpis || {}, pendientes: estado.pendientes.map(p => ({ archivo: p.id, cliente: p.cliente, tipo: p.tipo, prioridad: p.prioridad, estado: p.estado, motivo: p.motivo, alertas: p.alertas })), expedientes: estado.expedientes.map(e => ({ cliente: e.cliente, estado: e.estado, faltantes: e.faltantes, dias: e.dias_sin_movimiento })) };
+    $("btnPreguntar").disabled = true; $("respuesta").hidden = false; $("respuesta").textContent = "Pensando…";
+    try {
+      const r = await sample(`Eres el asistente del panel de reembolsos de Arval. Responde en español, breve y concreto, solo con los datos siguientes (metadatos; no inventes). Datos: ${JSON.stringify(datos).slice(0, 60000)}\n\nPregunta: ${q}`, { onText: ({ text }) => { $("respuesta").textContent = text; }, modelTier: "default", cache: false });
+      $("respuesta").textContent = r.text;
+    } catch (e) { $("respuesta").textContent = e.code === "not_granted" ? "No autorizaste preguntar a Claude desde esta página." : "No se pudo responder ahora."; }
+    finally { $("btnPreguntar").disabled = false; }
+  });
+
+  function suscribir(){
+    const err = (e) => { if (e && e.code === "revoked") $("avisoDb").hidden = false; };
+    db.doc("monitor/clasificador").onSnapshot((s) => { estado.monitor.clasificador = s.exists ? s.data() : null; pintarSemaforo(); pintarKpis(); }, err);
+    db.doc("monitor/resumen").onSnapshot((s) => { estado.monitor.resumen = s.exists ? s.data() : null; pintarSemaforo(); }, err);
+    db.doc("catalogo/lista").onSnapshot((s) => { estado.catalogo = s.exists ? (s.data().nombres || []) : []; pintarPendientes(); }, err);
+    db.collection("pendientes").limit(500).onSnapshot((s) => { estado.pendientes = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarPendientes(); pintarKpis(); }, err);
+    db.collection("expedientes").limit(300).onSnapshot((s) => { estado.expedientes = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarExpedientes(); pintarKpis(); }, err);
+    db.collection("candidatos").limit(300).onSnapshot((s) => { estado.candidatos = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarCandidatos(); pintarKpis(); }, err);
+  }
+
+  async function iniciar(){
+    if (!window.claude || typeof window.claude.use !== "function") { $("avisoDb").hidden = false; return; }
+    const [d, u, s] = await Promise.all([claude.use("db"), claude.use("user"), claude.use("sample")]);
+    db = d; sample = s;
+    if (!db) { $("avisoDb").hidden = false; return; }
+    try { estado.uid = u ? await u.id() : null; } catch (e) { estado.uid = null; }
+    suscribir();
+  }
+  iniciar();
+})();
+</script>

@@ -1,0 +1,13 @@
+.env
+trabajo/
+__pycache__/
+*.pyc
+*.zip
+*.xlsx
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.xml
+!tests/datos/*.xml
+.pytest_cache/

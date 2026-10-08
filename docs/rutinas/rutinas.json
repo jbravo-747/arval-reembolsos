@@ -1,0 +1,37 @@
+{
+  "_nota": "Plantillas para crear las rutinas con la herramienta RemoteTrigger (action: create) desde una sesión de Claude Code en la cuenta de empresa. Sustituir ENVIRONMENT_ID, REPO_URL, el UUID y el prompt (docs/rutinas/*.prompt.md). Los horarios están en UTC: 14:00-01:00 UTC = 8:00-19:00 Ciudad de México.",
+  "clasificador": {
+    "name": "Reembolsos: clasificador",
+    "cron_expression": "0 14-23,0-1 * * 1-5",
+    "enabled": true,
+    "job_config": {
+      "ccr": {
+        "environment_id": "ENVIRONMENT_ID",
+        "session_context": {
+          "model": "claude-sonnet-5-5",
+          "sources": [{"git_repository": {"url": "REPO_URL"}}],
+          "allowed_tools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "ArtifactData"]
+        },
+        "events": [{"data": {"uuid": "GENERAR-UUID-V4", "session_id": "", "type": "user", "parent_tool_use_id": null,
+                             "message": {"role": "user", "content": "PEGAR docs/rutinas/clasificador.prompt.md"}}}]
+      }
+    }
+  },
+  "resumen_diario": {
+    "name": "Reembolsos: resumen diario",
+    "cron_expression": "0 14 * * 1-5",
+    "enabled": true,
+    "job_config": {
+      "ccr": {
+        "environment_id": "ENVIRONMENT_ID",
+        "session_context": {
+          "model": "claude-sonnet-5-5",
+          "sources": [{"git_repository": {"url": "REPO_URL"}}],
+          "allowed_tools": ["Bash", "Read", "ArtifactData"]
+        },
+        "events": [{"data": {"uuid": "GENERAR-UUID-V4", "session_id": "", "type": "user", "parent_tool_use_id": null,
+                             "message": {"role": "user", "content": "PEGAR docs/rutinas/resumen_diario.prompt.md"}}}]
+      }
+    }
+  }
+}
