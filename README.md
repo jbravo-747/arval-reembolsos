@@ -21,6 +21,8 @@ Organizador de reembolsos médicos del buzón de Lau (Arval México), ejecutado 
 | Borradores de correo al cliente pidiendo lo que falta (Lau revisa y envía) | `cli.py borradores` |
 | Pregunta al panel en lenguaje natural sobre lo pendiente | panel (`sample`) |
 | Modo "propone" para operar una semana sin escribir nada en Microsoft 365 | `MODO` |
+| Indexar los expedientes que Lau ya tiene a mano: descubre clientes por carpeta y documentos por contenido, propone el catálogo y registra el histórico sin mover nada | `cli.py indexar` |
+| Base de datos compartida del equipo en listas de SharePoint, con el mismo código | `docs/base_datos_equipo.md`, `reembolsos/listas.py` |
 
 ## Uso
 
@@ -40,6 +42,7 @@ python -m pytest -q
 - `docs/plan_v2.md`: plan completo, fases, costos y riesgos.
 - `docs/prerrequisitos_ernesto.md`: lo que debe hacer el administrador del tenant.
 - `docs/implementacion_lau.md`: **procedimiento completo desde el paso 0** para instalarlo en producción en el entorno de Lau (cuenta de servicio, OneDrive y Excel, Outlook y redirección, flujo 1, Claude, rutinas, operación).
+- `docs/base_datos_equipo.md`: base de datos compartida del equipo (listas de SharePoint) y cómo migrar.
 - `docs/power_automate.md`: qué se conserva de Power Automate, paquetes y generadores, y cómo pasarlo al buzón de Lau.
 - `docs/guia_ejecucion.md`: pasos de la parte de Claude en la cuenta de empresa.
 - `powerautomate/`: generadores de Excel y flujos y los paquetes .zip instalados hoy.

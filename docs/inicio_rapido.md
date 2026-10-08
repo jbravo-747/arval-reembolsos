@@ -8,12 +8,12 @@ Repositorio: https://github.com/jbravo-747/arval-reembolsos (privado). Responsab
 git clone https://github.com/jbravo-747/arval-reembolsos.git
 cd arval-reembolsos
 pip install -r requirements.txt
-python -m pytest -q        # debe terminar con 22 passed
+python -m pytest -q        # debe terminar con 24 passed
 ```
 
 ## 1b. Para implementarlo en el entorno de Lau desde cero
 
-Seguir `docs/implementacion_lau.md`: paso 0 (cuenta de servicio, licencias, Entra ID, catálogo), 1 (OneDrive y Excel generado con `powerautomate/generar.py --solo-excel`), 2 (Outlook y redirección), 3 (flujo 1 de Power Automate), 4 (Claude y panel), 5 (rutinas en modo propone), 6 (producción), 7 (operación).
+Seguir `docs/implementacion_lau.md`: paso 0 (cuenta de servicio, licencias, Entra ID, catálogo), 1 (OneDrive y Excel generado con `powerautomate/generar.py --solo-excel`), 1b (indexar los expedientes que Lau ya tiene a mano con `cli.py indexar`), 2 (Outlook y redirección), 3 (flujo 1 de Power Automate), 4 (Claude y panel), 5 (rutinas en modo propone), 6 (producción), 7 (operación).
 
 ## 2. Qué se puede hacer de inmediato (sin credenciales)
 

@@ -69,14 +69,38 @@ class Graph:
             self._drive_id = self.get(f"/users/{self.cfg.usuario}/drive")["id"]
         return self._drive_id
 
-    def _ruta(self, ruta):
-        return f"/drives/{self.drive}/root:{urllib.parse.quote(ruta)}"
+    def drive_de(self, usuario):
+        """Id del OneDrive de otro usuario del tenant (requiere permiso de aplicación sobre sus archivos)."""
+        return self.get(f"/users/{usuario}/drive")["id"]
 
-    def item_por_ruta(self, ruta):
-        return self.get(self._ruta(ruta))
+    def _ruta(self, ruta, drive=None):
+        return f"/drives/{drive or self.drive}/root:{urllib.parse.quote(ruta)}"
 
-    def listar(self, ruta):
-        return self.get_all(self._ruta(ruta) + ":/children?$top=200&$select=id,name,size,file,folder,createdDateTime,webUrl,parentReference")
+    def item_por_ruta(self, ruta, drive=None):
+        return self.get(self._ruta(ruta, drive))
+
+    def listar(self, ruta, drive=None):
+        return self.get_all(self._ruta(ruta, drive) + ":/children?$top=200&$select=id,name,size,file,folder,createdDateTime,lastModifiedDateTime,webUrl,parentReference")
+
+    def listar_recursivo(self, ruta, drive=None, max_items=5000):
+        """Recorre una carpeta y sus subcarpetas; devuelve (ruta_relativa, item) para cada archivo."""
+        salida, pendientes = [], [ruta]
+        while pendientes and len(salida) < max_items:
+            actual = pendientes.pop(0)
+            for it in self.listar(actual, drive):
+                rel = f"{actual}/{it['name']}"
+                if "folder" in it:
+                    pendientes.append(rel)
+                else:
+                    salida.append((rel, it))
+        return salida
+
+    def descargar_de(self, drive, item_id, destino):
+        r = self._req("GET", f"/drives/{drive}/items/{item_id}/content", stream=True)
+        with open(destino, "wb") as fh:
+            for trozo in r.iter_content(1 << 16):
+                fh.write(trozo)
+        return destino
 
     def descargar(self, item_id, destino):
         r = self._req("GET", f"/drives/{self.drive}/items/{item_id}/content", stream=True)

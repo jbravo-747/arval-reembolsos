@@ -391,6 +391,103 @@ def ingresar(cfg):
           f"propuestas: {sum(1 for r in resultados if r['estado'] == 'propuesto')} | errores: {sum(1 for r in resultados if r['estado'] == 'error')}")
 
 
+# ---------- indexar expedientes hechos a mano ----------
+TIPO_POR_PALABRA = [("receta", "Receta"), ("informe", "Informe médico"), ("estudio", "Estudio o resultado"), ("resultado", "Estudio o resultado"),
+                    ("factura", "Factura PDF"), ("recibo", "Factura PDF"), ("ine", "Identificación"), ("curp", "Identificación"),
+                    ("identificaci", "Identificación"), ("poliza", "Operación de seguro (no reembolso)"), ("endoso", "Operación de seguro (no reembolso)")]
+
+
+def _tipo_por_nombre(nombre):
+    n = normalizar(nombre)
+    for palabra, tipo in TIPO_POR_PALABRA:
+        if palabra.upper() in n:
+            return tipo
+    return ""
+
+
+def indexar(cfg, ruta, usuario=None, max_mb=25):
+    """Recorre una carpeta de expedientes hechos a mano (p. ej. el OneDrive de Lau), descubre clientes por el nombre de
+    cada subcarpeta y documentos por su contenido, y escribe trabajo/indexacion.json y trabajo/catalogo_sugerido.csv.
+    En modo aplica registra cada archivo en tblRegistro con estado 'Histórico' (no mueve ni renombra nada)."""
+    import csv
+    g = Graph(cfg)
+    drive = g.drive_de(usuario) if usuario else None
+    archivo_id = _control(g, cfg)
+    catalogo = Catalogo(g.tabla_como_dicts(archivo_id, "tblClientes"))
+    enc, _, registros = _registros(g, archivo_id)
+    ya = {str(r.get("IdCorreo") or "") for r in registros}
+    archivos = g.listar_recursivo(ruta, drive)
+    base = ruta.rstrip("/")
+    carpeta_local = cfg.trabajo / "historico"
+    carpeta_local.mkdir(parents=True, exist_ok=True)
+    por_carpeta, filas = {}, []
+    for rel, it in archivos:
+        resto = rel[len(base) + 1:]
+        partes = resto.split("/")
+        carpeta = partes[0] if len(partes) > 1 else ""
+        nombre = it["name"]
+        ext = Path(nombre).suffix.lower()
+        cliente_carpeta, como = catalogo.resolver(carpeta) if carpeta else (None, "")
+        pre = {"metodo": "sin analizar", "cliente": None, "rfc": "", "total": "", "fecha_doc": "", "texto_disponible": False, "candidatos": []}
+        if ext not in cl.EXT_IMAGEN and ext not in cl.EXT_IGNORAR and it.get("size", 0) <= max_mb * 1024 * 1024:
+            destino = carpeta_local / f"{it['id'][-8:]}_{nombre}"
+            try:
+                if not destino.exists():
+                    g.descargar_de(drive or g.drive, it["id"], destino)
+                pre = cl.preanalisis(destino, catalogo, cfg.paginas_max)
+            except GraphError as e:
+                pre["metodo"] = f"error: {str(e)[:60]}"
+        elif ext in cl.EXT_IMAGEN:
+            pre["metodo"] = "imagen: requiere lectura del agente"
+        cliente = cliente_carpeta or pre.get("cliente")
+        conflicto = bool(cliente_carpeta and pre.get("cliente") and cliente_carpeta != pre["cliente"])
+        tipo = ("CFDI factura" if pre.get("metodo") == "Receptor CFDI" else _tipo_por_nombre(nombre)) or "Documento histórico"
+        fila = {"ruta": rel, "nombre": nombre, "carpeta": carpeta, "subcarpeta": "/".join(partes[1:-1]), "tamano": it.get("size", 0),
+                "fecha": str(it.get("createdDateTime") or "")[:10], "item_id": it["id"], "enlace": it.get("webUrl", ""),
+                "cliente": cliente, "cliente_por": "carpeta" if cliente_carpeta else ("contenido" if pre.get("cliente") else ""),
+                "confianza": "Alta" if cliente_carpeta and como == "exacta" else ("Media" if cliente else "Ninguna"),
+                "conflicto": conflicto, "tipo": tipo, "metodo": pre.get("metodo"), "rfc": pre.get("rfc", ""), "total": pre.get("total", ""),
+                "fecha_doc": pre.get("fecha_doc", ""), "candidatos": pre.get("candidatos", []),
+                "requiere_lectura": ext in cl.EXT_IMAGEN or pre.get("metodo", "").startswith("escaneado"), "ya_indexado": f"historico:{it['id']}" in ya}
+        filas.append(fila)
+        c = por_carpeta.setdefault(carpeta, {"carpeta": carpeta, "cliente_catalogo": cliente_carpeta, "archivos": 0, "tipos": set(), "candidato": None})
+        c["archivos"] += 1
+        c["tipos"].add(tipo)
+    sugeridos = []
+    for c in por_carpeta.values():
+        c["tipos"] = sorted(c["tipos"])
+        if c["carpeta"] and not c["cliente_catalogo"]:
+            c["candidato"] = re.sub(r"\s+", " ", c["carpeta"]).strip()
+            sugeridos.append(c["candidato"])
+    indexacion = {"generado": ahora().isoformat(timespec="seconds"), "ruta": ruta, "usuario": usuario or cfg.usuario, "modo": cfg.modo,
+                  "resumen": {"archivos": len(filas), "carpetas": len(por_carpeta), "con_cliente": sum(1 for f in filas if f["cliente"]),
+                              "conflictos": sum(1 for f in filas if f["conflicto"]), "requieren_lectura": sum(1 for f in filas if f["requiere_lectura"]),
+                              "carpetas_sin_catalogo": len(sugeridos), "ya_indexados": sum(1 for f in filas if f["ya_indexado"])},
+                  "carpetas": sorted(por_carpeta.values(), key=lambda c: c["carpeta"]), "archivos": filas}
+    _escribir_json(cfg.trabajo / "indexacion.json", indexacion)
+    with (cfg.trabajo / "catalogo_sugerido.csv").open("w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.writer(fh); w.writerow(["NombreCliente", "Correo", "RFC", "Alias", "Tipo", "Origen"])
+        for s in sugeridos:
+            w.writerow([s, "", "", "", "", f"carpeta en {ruta}"])
+    registradas = 0
+    if cfg.modo == "aplica":
+        for f in filas:
+            if f["ya_indexado"] or not f["cliente"]:
+                continue
+            g.tabla_agregar_fila(archivo_id, "tblRegistro", enc, {
+                "ID": str(uuid.uuid4()), "FechaRecepcion": f["fecha"], "HoraRecepcion": "00:00", "IdCorreo": f"historico:{f['item_id']}",
+                "Remitente": f"historico:{usuario or cfg.usuario}", "Cliente": f["cliente"], "Asunto": f"Expediente manual: {f['carpeta']}",
+                "NombreOriginal": f["nombre"], "TamanoBytes": str(f["tamano"]), "NombreGuardado": f["nombre"], "Ruta": f["ruta"],
+                "TipoDocumento": f["tipo"], "RFC_Emisor": "", "Total": f["total"], "FechaCFDI": f["fecha_doc"], "Duplicado": "No",
+                "Estado": "Histórico", "Confianza": f["confianza"], "Prioridad": "3", "EnResumen": "Sí", "Enlace": f["enlace"],
+                "Observaciones": f"Indexado de expediente manual ({f['cliente_por']}); {f['metodo']}" + ("; AVISO: carpeta y contenido no coinciden" if f["conflicto"] else "")})
+            registradas += 1
+    r = indexacion["resumen"]
+    print(f"archivos: {r['archivos']} en {r['carpetas']} carpetas | con cliente: {r['con_cliente']} | conflictos: {r['conflictos']} | "
+          f"requieren lectura: {r['requieren_lectura']} | carpetas sin catálogo: {r['carpetas_sin_catalogo']} | registradas: {registradas} (modo {cfg.modo})")
+    print(f"detalle: {cfg.trabajo / 'indexacion.json'} | catálogo sugerido: {cfg.trabajo / 'catalogo_sugerido.csv'}")
+
+
 # ---------- latido ----------
 def latido(cfg, rutina, resultado, detalle=""):
     g = Graph(cfg)
@@ -445,11 +542,13 @@ def decisiones_locales(cfg):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("comando", choices=["selftest", "pull", "apply", "resumen", "borradores", "ingresar", "latido", "decisiones-locales"])
+    p.add_argument("comando", choices=["selftest", "pull", "apply", "resumen", "borradores", "ingresar", "indexar", "latido", "decisiones-locales"])
     p.add_argument("args", nargs="*")
     p.add_argument("--modo", choices=["propone", "aplica"])
     p.add_argument("--todos", action="store_true")
     p.add_argument("--preparar", action="store_true")
+    p.add_argument("--ruta", help="indexar: carpeta de OneDrive con los expedientes hechos a mano, p. ej. /Reembolsos Lau")
+    p.add_argument("--usuario", help="indexar: dueño del OneDrive si no es la cuenta de servicio, p. ej. ltorres@arval.com.mx")
     a = p.parse_args()
     cfg = cargar()
     if a.modo:
@@ -467,6 +566,10 @@ def main():
         borradores(cfg)
     elif a.comando == "ingresar":
         ingresar(cfg)
+    elif a.comando == "indexar":
+        if not a.ruta:
+            sys.exit("uso: indexar --ruta '/carpeta de expedientes' [--usuario correo@arval.com.mx]")
+        indexar(cfg, a.ruta, a.usuario)
     elif a.comando == "latido":
         if len(a.args) < 2:
             sys.exit("uso: latido <rutina> <resultado> [detalle]")

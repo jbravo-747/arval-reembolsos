@@ -39,6 +39,27 @@ Los pasos 1 a 3 solo necesitan 0.1, 0.2, 0.6 y 0.7. Los pasos 4 a 6 necesitan 0.
 
 **Comprobación:** Lau abre el Excel desde su cuenta y ve las tres hojas; Joel tiene los dos ids anotados.
 
+## Paso 1b. Indexar los expedientes que Lau ya tiene hechos a mano (Joel con Claude, 1 sesión)
+
+Lau ya tiene carpetas por cliente con sus documentos. No se mueven ni se renombran: se **descubren e indexan** para que el sistema arranque conociendo a sus clientes y sus expedientes.
+
+1. Ubicar la carpeta raíz de sus expedientes (en su OneDrive, p. ej. `/Reembolsos Lau`, o compartida con la cuenta de servicio). Si está en el OneDrive de Lau, la aplicación de Graph del paso 0.4 ya tiene permiso para leerla con `--usuario`.
+2. Primera pasada, solo reporte:
+   ```bash
+   python cli.py indexar --ruta "/Reembolsos Lau" --usuario ltorres@arval.com.mx
+   ```
+   Produce `trabajo/indexacion.json` (cada carpeta y cada archivo, con el cliente deducido del nombre de la carpeta o del contenido, el tipo de documento, y si hay conflicto entre carpeta y contenido) y `trabajo/catalogo_sugerido.csv` (las carpetas cuyo nombre no está en el catálogo, listas para pegar en la hoja `Clientes` con correo y RFC).
+3. Revisar con Lau el catálogo sugerido: completar correo y RFC, corregir nombres, marcar lo que no es cliente. Cargarlo en `Clientes`.
+4. Segunda pasada en modo aplica: registra cada archivo en `tblRegistro` con estado `Histórico` (no aparece en el resumen ni en pendientes), cliente, tipo, enlace al archivo y confianza. Con eso los expedientes del panel incluyen lo histórico y los faltantes se calculan sobre todo lo que existe.
+   ```bash
+   python cli.py indexar --ruta "/Reembolsos Lau" --usuario ltorres@arval.com.mx --modo aplica
+   ```
+5. Los escaneos e imágenes del histórico quedan marcados `requiere_lectura`; se leen con Claude solo si Lau lo pide (son muchos y el valor es menor que en lo nuevo).
+
+**Comprobación:** `indexacion.json` sin conflictos sin resolver; el panel muestra expedientes históricos por cliente.
+
+Decisión pendiente para Arval: si los expedientes históricos se quedan en el OneDrive de Lau (indexados, con enlace) o se copian a `/Reembolsos/Clientes/<cliente>/<mes>` de la cuenta de servicio para tener todo junto. La copia la hace Claude por Graph en una sesión; recomendable si Lau cambiará de puesto algún día.
+
 ## Paso 2. Outlook (Joel con la sesión de la cuenta de servicio; la regla, con Lau presente)
 
 1. En el buzón de la cuenta de servicio crear la carpeta `Duplicados - revisar` al mismo nivel que Bandeja de entrada.
@@ -95,6 +116,10 @@ Desde este punto Lau ya tiene captura y registro automáticos, aunque los pasos 
 - **Secreto de Graph:** renovarlo antes de los 12 meses (anotar la fecha en el calendario del administrador).
 - **Cambios de reglas:** editar el repositorio, correr las pruebas, subir; las rutinas toman la versión nueva en la siguiente corrida.
 - **Si cambia la persona:** la cuenta de servicio no cambia; solo la redirección del buzón nuevo y el destinatario del resumen (`CORREO_RESUMEN`).
+
+## Paso 8 (siguiente etapa). Base de datos compartida del equipo
+
+Cuando el organizador lo use más de una persona, la fuente de verdad pasa del Excel a listas de SharePoint en un sitio del equipo (Clientes, Documentos, Expedientes, Monitor), sin costo adicional y con permisos por rol, vistas e historial. El diseño y la migración están en `docs/base_datos_equipo.md`; el código ya trae `reembolsos/listas.py` con las mismas operaciones que usa hoy sobre Excel.
 
 ## Lista de verificación final
 
