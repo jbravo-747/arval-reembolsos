@@ -109,6 +109,24 @@ class Graph:
         return self._req("PUT", self._ruta(ruta) + ":/content", data=contenido,
                          headers={"Content-Type": content_type}).json()
 
+    def subir_archivo(self, ruta_onedrive, ruta_local):
+        """Sube un archivo de cualquier tamaño (sesión de carga por bloques de 5 MB si pasa de 4 MB). No sobrescribe."""
+        datos = open(ruta_local, "rb").read()
+        if len(datos) < 4 * 1024 * 1024:
+            return self._req("PUT", self._ruta(ruta_onedrive) + ":/content?@microsoft.graph.conflictBehavior=fail",
+                             data=datos, headers={"Content-Type": "application/octet-stream"}).json()
+        sesion = self._req("POST", self._ruta(ruta_onedrive) + ":/createUploadSession",
+                           json={"item": {"@microsoft.graph.conflictBehavior": "fail"}}).json()
+        url, bloque, pos, resp = sesion["uploadUrl"], 5 * 1024 * 1024, 0, None
+        while pos < len(datos):
+            trozo = datos[pos:pos + bloque]
+            resp = self.sesion.put(url, data=trozo, headers={"Content-Length": str(len(trozo)),
+                                                             "Content-Range": f"bytes {pos}-{pos + len(trozo) - 1}/{len(datos)}"}, timeout=300)
+            if resp.status_code >= 400:
+                raise GraphError("PUT", url, resp.status_code, resp.text[:300])
+            pos += len(trozo)
+        return resp.json()
+
     def enlace_lectura(self, item_id):
         j = self._req("POST", f"/drives/{self.drive}/items/{item_id}/createLink",
                       json={"type": "view", "scope": "organization"}).json()

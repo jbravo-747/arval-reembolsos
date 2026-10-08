@@ -14,7 +14,7 @@ python -m pytest -q        # debe terminar con 18 passed
 ## 2. Qué se puede hacer de inmediato (sin credenciales)
 
 - Leer `docs/guia_ejecucion.md` (pasos en la cuenta de Claude para empresas) y `docs/plan_v2.md` (plan completo).
-- Publicar el panel desde la cuenta de empresa: pedir a Claude "publica `panel/panel.html` como artifact con las capacidades db, user y sample" y sembrarlo con `panel/semilla_ejemplo.json` para mostrarlo a Lau.
+- Publicar el panel desde la cuenta de empresa: pedir a Claude "publica `panel/panel.html` como artifact con las capacidades db, user, sample y assets" y sembrarlo con `panel/semilla_ejemplo.json` para mostrarlo a Lau.
 - Preparar el Excel: columna `Prioridad` en `tblRegistro`, hoja `Monitor` con `tblMonitor` (Rutina, Fecha, Hora, Resultado, Detalle), `Tipo` en los remitentes que no son clientes.
 
 ## 3. Qué necesita el administrador del tenant

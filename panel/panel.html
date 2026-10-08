@@ -59,6 +59,14 @@ button.btn:disabled{opacity:.5;cursor:default}
 a.btn-link{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:.9rem;padding:5px 11px;border-radius:6px;border:1px solid var(--accent);color:var(--accent);text-decoration:none;background:var(--accent-soft)}
 a.btn-link::before{content:"";width:12px;height:10px;border:2px solid currentColor;border-radius:2px;border-top-width:4px}
 a.btn-link.min{padding:2px 8px;font-size:.82rem}
+.zona{border:2px dashed var(--line);border-radius:10px;padding:18px;text-align:center;color:var(--muted);background:var(--surface-2);transition:border-color .15s,background .15s}
+.zona.sobre{border-color:var(--accent);background:var(--accent-soft);color:var(--fg)}
+.zona strong{color:var(--fg)}
+.zona input[type=file]{display:none}
+.entrada{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:.9rem}
+.entrada .e{font-size:.78rem;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em;background:var(--surface-2)}
+.entrada .e.ingresado,.entrada .e.clasificado{background:var(--ok-soft);color:var(--ok)} .entrada .e.error{background:var(--crit-soft);color:var(--crit)} .entrada .e.subiendo,.entrada .e.pendiente{background:var(--warn-soft);color:var(--warn)}
+@media (prefers-reduced-motion:reduce){.zona{transition:none}}
 button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .exp{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
 .exp .fila{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;align-items:baseline}
@@ -111,6 +119,19 @@ a{color:var(--accent)}
     </section>
 
     <div style="display:flex;flex-direction:column;gap:18px;min-width:0">
+      <section id="secSoltar">
+        <div class="sec-head"><h2>Soltar archivos</h2><span class="muted">WhatsApp, escáner, lo que llegue fuera del correo</span></div>
+        <label class="zona" id="zona" for="archivos">
+          <strong>Arrastra aquí los archivos</strong> o toca para elegirlos.<br>PDF, fotos y XML. Entran al mismo circuito que el correo: OneDrive, registro, clasificación y expediente.
+          <input type="file" id="archivos" multiple accept=".pdf,.xml,.png,.jpg,.jpeg,image/*,application/pdf,text/xml">
+        </label>
+        <div class="acciones">
+          <label for="clienteEntrada" class="muted">Cliente (si lo sabes):</label>
+          <select id="clienteEntrada"><option value="">Que lo detecte Claude</option></select>
+        </div>
+        <div class="lista" id="entradas"></div>
+      </section>
+
       <section>
         <div class="sec-head"><h2>Acciones</h2><small class="ts" id="ultimaCorrida"></small></div>
         <div class="acciones">
@@ -277,24 +298,71 @@ a{color:var(--accent)}
     finally { $("btnPreguntar").disabled = false; }
   });
 
+  // ----- Soltar archivos (WhatsApp, escáner): el archivo va al almacén del artifact y la rutina lo ingresa -----
+  let assets = null;
+  const subiendo = new Map();
+  const TIPOS_OK = /\.(pdf|xml|png|jpe?g|tiff?|bmp)$/i;
+
+  function pintarEntradas(){
+    const cont = $("entradas");
+    const lista = [...subiendo.values(), ...estado.entradas].sort((a, b) => String(b.hora).localeCompare(String(a.hora))).slice(0, 25);
+    if (!lista.length) { cont.innerHTML = ""; return; }
+    cont.innerHTML = lista.map(e => {
+      const detalle = e.estado === "clasificado" ? `${esc(e.cliente || "sin cliente")} · ${esc(e.tipo || "")}` : e.estado === "error" ? esc(e.detalle || "no se pudo procesar") : e.estado === "ingresado" ? "en OneDrive, clasificando en la siguiente corrida" : e.estado === "subiendo" ? "subiendo…" : "esperando a la rutina";
+      return `<div class="entrada"><span style="min-width:0;overflow-wrap:anywhere"><strong>${esc(e.nombre)}</strong> <span class="muted">${esc(detalle)}</span></span><span class="e ${esc(e.estado)}">${esc(e.estado)}</span></div>`;
+    }).join("");
+  }
+
+  async function soltar(archivos){
+    if (!db) return toast("Sin conexión a los datos");
+    if (!assets) return toast("Esta vista no puede guardar archivos; ábrelo con permiso de edición");
+    const cliente = $("clienteEntrada").value || null;
+    for (const f of Array.from(archivos)) {
+      if (!TIPOS_OK.test(f.name)) { toast(`${f.name}: solo PDF, imágenes o XML`); continue; }
+      if (f.size > 20 * 1024 * 1024) { toast(`${f.name}: supera 20 MB`); continue; }
+      const clave = f.name + ":" + f.size + ":" + Date.now();
+      subiendo.set(clave, { nombre: f.name, estado: "subiendo", hora: new Date().toISOString() });
+      pintarEntradas();
+      try {
+        const a = await assets.upload(f);
+        await db.collection("entradas").add({ asset_id: a.id, nombre: f.name, tamano: f.size, tipo_mime: f.type || "", cliente, por: estado.uid, hora: new Date().toISOString(), estado: "pendiente" });
+        toast(`${f.name} recibido`);
+      } catch (e) {
+        toast(e.code === "quota_exceeded" ? "Sin espacio en el panel; avisa a Joel" : e.code === "not_granted" ? "No autorizaste guardar archivos" : `No se pudo subir ${f.name}`);
+      } finally { subiendo.delete(clave); pintarEntradas(); }
+    }
+  }
+  const zona = $("zona");
+  ["dragenter", "dragover"].forEach(ev => zona.addEventListener(ev, (e) => { e.preventDefault(); zona.classList.add("sobre"); }));
+  ["dragleave", "drop"].forEach(ev => zona.addEventListener(ev, (e) => { e.preventDefault(); zona.classList.remove("sobre"); }));
+  zona.addEventListener("drop", (e) => { if (e.dataTransfer && e.dataTransfer.files.length) soltar(e.dataTransfer.files); });
+  $("archivos").addEventListener("change", (e) => { soltar(e.target.files); e.target.value = ""; });
+
+  function pintarSelectEntrada(){
+    const sel = $("clienteEntrada"); const actual = sel.value;
+    sel.innerHTML = `<option value="">Que lo detecte Claude</option>` + estado.catalogo.map(n => `<option ${n === actual ? "selected" : ""}>${esc(n)}</option>`).join("");
+  }
+
   function suscribir(){
     const err = (e) => { if (e && e.code === "revoked") $("avisoDb").hidden = false; };
     db.doc("monitor/clasificador").onSnapshot((s) => { estado.monitor.clasificador = s.exists ? s.data() : null; pintarSemaforo(); pintarKpis(); }, err);
     db.doc("monitor/resumen").onSnapshot((s) => { estado.monitor.resumen = s.exists ? s.data() : null; pintarSemaforo(); }, err);
-    db.doc("catalogo/lista").onSnapshot((s) => { estado.catalogo = s.exists ? (s.data().nombres || []) : []; pintarPendientes(); }, err);
+    db.doc("catalogo/lista").onSnapshot((s) => { estado.catalogo = s.exists ? (s.data().nombres || []) : []; pintarPendientes(); pintarSelectEntrada(); }, err);
     db.collection("pendientes").limit(500).onSnapshot((s) => { estado.pendientes = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarPendientes(); pintarKpis(); }, err);
     db.collection("expedientes").limit(300).onSnapshot((s) => { estado.expedientes = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarExpedientes(); pintarKpis(); }, err);
     db.collection("candidatos").limit(300).onSnapshot((s) => { estado.candidatos = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarCandidatos(); pintarKpis(); }, err);
+    db.collection("entradas").limit(200).onSnapshot((s) => { estado.entradas = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarEntradas(); }, err);
   }
 
   async function iniciar(){
     if (!window.claude || typeof window.claude.use !== "function") { $("avisoDb").hidden = false; return; }
-    const [d, u, s] = await Promise.all([claude.use("db"), claude.use("user"), claude.use("sample")]);
-    db = d; sample = s;
+    const [d, u, s, a] = await Promise.all([claude.use("db"), claude.use("user"), claude.use("sample"), claude.use("assets")]);
+    db = d; sample = s; assets = a;
     if (!db) { $("avisoDb").hidden = false; return; }
     try { estado.uid = u ? await u.id() : null; } catch (e) { estado.uid = null; }
     suscribir();
   }
+  estado.entradas = [];
   iniciar();
 })();
 </script>

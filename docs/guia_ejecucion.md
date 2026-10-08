@@ -31,7 +31,7 @@ Debe imprimir el drive, la carpeta base, las columnas de `tblRegistro` y `tblCli
 
 ## Paso 4. Panel (Joel con Claude, una sesión)
 
-1. Pedir a Claude: "publica `panel/panel.html` como artifact con las capacidades db, user y sample". El resultado es la URL del panel.
+1. Pedir a Claude: "publica `panel/panel.html` como artifact con las capacidades db, user, sample y assets". El resultado es la URL del panel. `assets` es el almacén donde quedan los archivos que Lau suelta en el panel (WhatsApp, escáner) hasta que la rutina los ingresa a OneDrive y los borra de ahí.
 2. Compartir el panel con Lau desde el menú Compartir de la página (nivel editar, para que pueda confirmar).
 3. Sembrar datos de prueba con ArtifactData si se quiere mostrar antes de conectar: colecciones `monitor`, `pendientes`, `candidatos`, `expedientes`.
 4. Guardar la URL como variable `PANEL_URL` para las rutinas.
@@ -47,6 +47,7 @@ Colecciones del panel y quién escribe:
 | `decisiones` | panel (Lau confirma cliente) | rutina (aplica y marca `aplicada`) |
 | `altas` | panel (Lau aprueba candidato) | rutina (agrega al catálogo y marca `aplicada`) |
 | `solicitudes` | panel (botón Procesar ahora) | rutina (marca `atendida`) |
+| `entradas` | panel (archivos soltados; el archivo va al almacén `assets`) | rutina (`cli.py ingresar`, marca `ingresado`/`clasificado`/`error` y borra el asset) |
 
 ## Paso 5. Rutina Clasificador (Joel con Claude)
 

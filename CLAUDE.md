@@ -28,6 +28,11 @@ ejecutan rutinas de Claude en la nube y sesiones de Claude Code. Léelo completo
 
 ## Cómo decide el agente (rutina Clasificador)
 
+0. Entradas del panel: los archivos que Lau suelta en el panel (WhatsApp, escáner) están en el almacén del artifact y en
+   la colección `entradas`. Se descargan, se describen en `trabajo/entradas.json` y `python cli.py ingresar` los sube a
+   `_Por identificar` con el nombre estándar y les crea su fila en `tblRegistro` (si Lau indicó cliente, queda como
+   confirmación). A partir de ahí siguen el mismo camino que un adjunto de correo. Después de ingresarlos se borra el
+   asset del almacén: el documento debe vivir solo en OneDrive.
 1. `pip install -r requirements.txt` y `python cli.py pull`.
 2. Abre `trabajo/trabajo.json`. Para cada item con `requiere_lectura: true`, lee el archivo de `ruta_local` con la
    herramienta Read (PDF: primeras 3 páginas; imágenes: completas). Para los demás, el análisis previo ya trae cliente

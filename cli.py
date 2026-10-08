@@ -18,7 +18,9 @@ El modo viene de --modo o de la variable MODO (por defecto "propone": no escribe
 import argparse
 import json
 import os
+import re
 import sys
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -314,6 +316,57 @@ def borradores(cfg, dias_min=2):
     print(f"borradores preparados en {carpeta}; {hechos} dejados en el buzón" + ("" if cfg.modo == "aplica" else " (modo propone: ninguno)"))
 
 
+# ---------- entradas desde el panel (archivos que Lau suelta: WhatsApp, escáner, etc.) ----------
+def ingresar(cfg):
+    """Lee trabajo/entradas.json ([{id, nombre, ruta_local, cliente, por, hora}]) y mete cada archivo al circuito:
+    lo sube a OneDrive con el nombre estándar y agrega su fila en tblRegistro. Si trae cliente, lo deja listo para
+    que apply lo confirme (confirmaciones.json). Escribe trabajo/entradas_resultado.json con el resultado por entrada."""
+    import hashlib
+    entradas = _leer_json(cfg.trabajo / "entradas.json", [])
+    if not entradas:
+        print("sin entradas"); return
+    g = Graph(cfg)
+    archivo_id = _control(g, cfg)
+    enc, _, _ = _registros(g, archivo_id)
+    catalogo = Catalogo(g.tabla_como_dicts(archivo_id, "tblClientes"))
+    nombres = {c.nombre for c in catalogo.clientes}
+    confirmaciones = _leer_json(cfg.trabajo / "confirmaciones.json", [])
+    resultados = []
+    for e in entradas:
+        ruta = Path(e.get("ruta_local") or "")
+        if not ruta.exists():
+            resultados.append({"id": e["id"], "estado": "error", "detalle": "archivo no descargado"}); continue
+        t = ahora()
+        hash6 = hashlib.sha1(ruta.read_bytes()).hexdigest()[:6]
+        nombre_limpio = re.sub(r"[\\/:*?\"<>|]+", "_", e.get("nombre") or ruta.name).strip() or ruta.name
+        guardado = f"{t:%Y%m%d_%H%M}_{hash6}_{nombre_limpio}"
+        cliente = e.get("cliente") if e.get("cliente") in nombres else None
+        fila = {"ID": str(uuid.uuid4()), "FechaRecepcion": t.strftime("%Y-%m-%d"), "HoraRecepcion": t.strftime("%H:%M"),
+                "IdCorreo": f"panel:{e['id']}", "Remitente": f"panel:{e.get('por') or 'desconocido'}", "Cliente": "",
+                "Asunto": e.get("asunto") or "Entrada manual desde el panel (WhatsApp u otro)", "NombreOriginal": nombre_limpio,
+                "TamanoBytes": str(ruta.stat().st_size), "NombreGuardado": guardado, "Ruta": f"{cfg.por_identificar}/{guardado}",
+                "TipoDocumento": "", "Duplicado": "No", "Estado": "Cliente desconocido", "EnResumen": "No",
+                "Observaciones": "Entrada manual desde el panel" + (f"; cliente indicado por Lau: {cliente}" if cliente else "")}
+        if cfg.modo != "aplica":
+            resultados.append({"id": e["id"], "estado": "propuesto", "nombre_guardado": guardado, "cliente": cliente}); continue
+        try:
+            item = g.subir_archivo(f"{cfg.por_identificar}/{guardado}", ruta)
+            try:
+                fila["Enlace"] = g.enlace_lectura(item["id"])
+            except GraphError:
+                pass
+            g.tabla_agregar_fila(archivo_id, "tblRegistro", enc, fila)
+            if cliente:
+                confirmaciones.append({"archivo": guardado, "cliente": cliente})
+            resultados.append({"id": e["id"], "estado": "ingresado", "nombre_guardado": guardado, "cliente": cliente})
+        except GraphError as ex:
+            resultados.append({"id": e["id"], "estado": "error", "detalle": str(ex)[:200]})
+    _escribir_json(cfg.trabajo / "confirmaciones.json", confirmaciones)
+    _escribir_json(cfg.trabajo / "entradas_resultado.json", resultados)
+    print(f"entradas: {len(entradas)} | ingresadas: {sum(1 for r in resultados if r['estado'] == 'ingresado')} | "
+          f"propuestas: {sum(1 for r in resultados if r['estado'] == 'propuesto')} | errores: {sum(1 for r in resultados if r['estado'] == 'error')}")
+
+
 # ---------- latido ----------
 def latido(cfg, rutina, resultado, detalle=""):
     g = Graph(cfg)
@@ -368,7 +421,7 @@ def decisiones_locales(cfg):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("comando", choices=["selftest", "pull", "apply", "resumen", "borradores", "latido", "decisiones-locales"])
+    p.add_argument("comando", choices=["selftest", "pull", "apply", "resumen", "borradores", "ingresar", "latido", "decisiones-locales"])
     p.add_argument("args", nargs="*")
     p.add_argument("--modo", choices=["propone", "aplica"])
     p.add_argument("--todos", action="store_true")
@@ -388,6 +441,8 @@ def main():
         resumen(cfg, a.preparar)
     elif a.comando == "borradores":
         borradores(cfg)
+    elif a.comando == "ingresar":
+        ingresar(cfg)
     elif a.comando == "latido":
         if len(a.args) < 2:
             sys.exit("uso: latido <rutina> <resultado> [detalle]")
