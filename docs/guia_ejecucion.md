@@ -9,7 +9,7 @@ Lista en `docs/prerrequisitos_ernesto.md`. No se avanza a los pasos 3 en adelant
 ## Paso 1. Repositorio
 
 1. Subir este repositorio a GitHub (privado) y conectarlo en Claude Code de la cuenta de empresa.
-2. En la sesión: `pip install -r requirements.txt && python -m pytest -q` → 18 pruebas en verde.
+2. En la sesión: `pip install -r requirements.txt && python -m pytest -q` → 21 pruebas en verde.
 
 ## Paso 2. Excel de control (Joel, 10 minutos)
 

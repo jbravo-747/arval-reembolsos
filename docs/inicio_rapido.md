@@ -8,7 +8,7 @@ Repositorio: https://github.com/jbravo-747/arval-reembolsos (privado). Responsab
 git clone https://github.com/jbravo-747/arval-reembolsos.git
 cd arval-reembolsos
 pip install -r requirements.txt
-python -m pytest -q        # debe terminar con 18 passed
+python -m pytest -q        # debe terminar con 21 passed
 ```
 
 ## 2. Qué se puede hacer de inmediato (sin credenciales)
