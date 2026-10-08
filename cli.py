@@ -246,10 +246,12 @@ def _snapshot(cfg, resultados, movidos, errores, expedientes, altas=0):
                  "expedientes_completos": sum(1 for e in expedientes if e["estado"] == "completo")},
         "pendientes": [{"id": r["nombre_guardado"], "cliente": r["cliente"], "tipo": r["tipo_documento"], "confianza": r["confianza"],
                         "prioridad": r["prioridad"], "estado": r["estado"], "candidatos": r["candidatos"], "motivo": r["motivo"],
-                        "alertas": r["alertas"], "remitente": r["remitente"], "asunto": r["asunto"], "fecha": r["fecha"], "hora": r["hora"]}
+                        "alertas": r["alertas"], "remitente": r["remitente"], "asunto": r["asunto"], "fecha": r["fecha"], "hora": r["hora"],
+                        "carpeta_url": cfg.url_carpeta(f"{cfg.clientes}/{r['cliente']}/{cl.mes_de(r['nombre_guardado'])}" if r["cliente"] and cfg.modo == "aplica"
+                                                       else cfg.por_identificar)}
                        for r in resultados],
         "candidatos": [{"nombre": c, "archivos": a} for c, a in candidatos.items()],
-        "expedientes": expedientes,
+        "expedientes": [{**e, "carpeta_url": cfg.url_carpeta(f"{cfg.clientes}/{e['cliente']}/{e['inicio'][:7]}")} for e in expedientes],
         "latido": {"rutina": "clasificador", "hora": ahora().isoformat(timespec="seconds"),
                    "resultado": "error" if errores else "ok", "detalle": f"{len(resultados)} analizados, {movidos} movidos"},
     }

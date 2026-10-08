@@ -55,7 +55,13 @@ class GraphFalso:
 
 def _cfg(tmp_path, modo):
     return Config(tenant_id="t", client_id="c", client_secret="s", usuario="u@x.com", correo_lau="l@x.com", ruta_base="/Reembolsos",
-                  archivo_control="Control.xlsx", modo=modo, trabajo=tmp_path / "trabajo", paginas_max=1)
+                  archivo_control="Control.xlsx", modo=modo, trabajo=tmp_path / "trabajo", paginas_max=1,
+                  onedrive_web="https://ejemplo.sharepoint.com/my?id=%2Fpersonal%2Fu%2FDocuments")
+
+
+def test_url_carpeta_codifica_la_ruta(tmp_path):
+    cfg = _cfg(tmp_path, "propone")
+    assert cfg.url_carpeta("/Reembolsos/Clientes/Ana Pérez/2026-10") == "https://ejemplo.sharepoint.com/my?id=%2Fpersonal%2Fu%2FDocuments%2FReembolsos%2FClientes%2FAna%20P%C3%A9rez%2F2026-10"
 
 
 def test_pull_y_apply_propone_no_escribe(tmp_path, monkeypatch):

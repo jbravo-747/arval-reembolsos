@@ -56,6 +56,9 @@ textarea{width:100%;resize:vertical}
 button.btn{font:inherit;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
 button.btn.sec{background:transparent;color:var(--accent)}
 button.btn:disabled{opacity:.5;cursor:default}
+a.btn-link{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:.9rem;padding:5px 11px;border-radius:6px;border:1px solid var(--accent);color:var(--accent);text-decoration:none;background:var(--accent-soft)}
+a.btn-link::before{content:"";width:12px;height:10px;border:2px solid currentColor;border-radius:2px;border-top-width:4px}
+a.btn-link.min{padding:2px 8px;font-size:.82rem}
 button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .exp{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
 .exp .fila{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;align-items:baseline}
@@ -194,7 +197,7 @@ a{color:var(--accent)}
           <div class="m"><span>${esc(x.cliente || "sin cliente")}</span><span>${esc(x.tipo || "")}</span><span>confianza ${esc((x.confianza || "").toLowerCase())}</span><span>${esc(x.estado || "")}</span><span>${esc(x.fecha || "")} ${esc(x.hora || "")}</span>${cands}</div>
           ${x.motivo ? `<div class="m"><span>${esc(x.motivo)}</span></div>` : ""}
           ${alertas}
-          ${x.prioridad <= 2 && !conf ? `<div class="acciones"><select aria-label="Cliente para ${esc(x.id)}">${opcionesCatalogo(x.cliente || (x.candidatos || [])[0] || "")}</select><button class="btn" type="button" data-accion="confirmar">Confirmar cliente</button></div>` : ""}
+          <div class="acciones">${x.carpeta_url ? `<a class="btn-link min" href="${esc(x.carpeta_url)}" target="_blank" rel="noopener">Abrir carpeta</a>` : ""}${x.prioridad <= 2 && !conf ? `<select aria-label="Cliente para ${esc(x.id)}">${opcionesCatalogo(x.cliente || (x.candidatos || [])[0] || "")}</select><button class="btn" type="button" data-accion="confirmar">Confirmar cliente</button>` : ""}</div>
           ${conf ? `<div class="m"><span>Confirmado. La rutina lo aplicará en su siguiente corrida.</span></div>` : ""}
         </div></div>`;
     }).join("");
@@ -209,9 +212,11 @@ a{color:var(--accent)}
       const cls = e.estado === "en revisión" ? "revision" : e.estado;
       const faltan = (e.faltantes || []).length ? `Falta: ${esc(e.faltantes.join(", "))}` : "Documentos esenciales completos";
       const archivos = (e.archivos || []).slice(0, 6).map(a => a.enlace ? `<a href="${esc(a.enlace)}" target="_blank" rel="noopener">${esc(a.tipo || a.nombre)}</a>` : esc(a.tipo || a.nombre)).join(" · ");
+      const carpeta = e.carpeta_url ? `<a class="btn-link" href="${esc(e.carpeta_url)}" target="_blank" rel="noopener">Abrir carpeta</a>` : "";
       return `<div class="exp"><div class="fila"><strong>${esc(e.cliente)}</strong><span class="estado ${cls}">${esc(e.estado)}</span></div>
         <div class="muted">${e.documentos} documento(s) · ${e.inicio} a ${e.ultimo} · ${e.dias_sin_movimiento} día(s) sin movimiento</div>
-        <div>${faltan}</div><div class="muted" style="font-size:.86rem">${archivos}</div></div>`;
+        <div>${faltan}</div><div class="muted" style="font-size:.86rem">${archivos}</div>
+        ${carpeta ? `<div class="acciones">${carpeta}</div>` : ""}</div>`;
     }).join("");
   }
 

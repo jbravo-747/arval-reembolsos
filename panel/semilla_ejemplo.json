@@ -1,16 +1,231 @@
 {
   "_nota": "Datos de EJEMPLO para sembrar el panel con ArtifactData (action batch, writes = esta lista). Sirven para mostrar el panel antes de conectar las rutinas. Ninguno es real.",
   "writes": [
-    {"op": "set", "collection": "monitor", "doc_id": "clasificador", "data": {"rutina": "clasificador", "hora": "2026-10-08T17:00:00-06:00", "resultado": "ok", "detalle": "EJEMPLO: 6 analizados, 3 movidos", "kpis": {"analizados": 6, "movidos": 3, "errores": 0, "prioridad1": 2, "prioridad2": 1, "prioridad3": 3, "expedientes_incompletos": 1, "expedientes_completos": 1}}},
-    {"op": "set", "collection": "monitor", "doc_id": "resumen", "data": {"rutina": "resumen", "hora": "2026-10-08T08:00:00-06:00", "resultado": "ok", "detalle": "EJEMPLO: 9 registros", "asunto": "Reembolsos 08/10/2026 (ejemplo)"}},
-    {"op": "set", "collection": "catalogo", "doc_id": "lista", "data": {"nombres": ["Cliente Ejemplo Uno", "Cliente Ejemplo Dos", "Cliente Ejemplo Tres"]}},
-    {"op": "set", "collection": "pendientes", "doc_id": "20261008_0901_ej01_factura_ejemplo.pdf", "data": {"id": "20261008_0901_ej01_factura_ejemplo.pdf", "cliente": null, "tipo": "Factura PDF", "confianza": "Ninguna", "prioridad": 1, "estado": "Cliente desconocido", "candidatos": ["PERSONA EJEMPLO CUATRO"], "motivo": "EJEMPLO: nombre leído no está en el catálogo", "alertas": [], "remitente": "escaner@ejemplo.com", "asunto": "(Sin asunto)", "fecha": "2026-10-08", "hora": "09:01"}},
-    {"op": "set", "collection": "pendientes", "doc_id": "20261008_1012_ej02_receta_ejemplo.pdf", "data": {"id": "20261008_1012_ej02_receta_ejemplo.pdf", "cliente": "Cliente Ejemplo Uno", "tipo": "Receta", "confianza": "Media", "prioridad": 2, "estado": "Revisar", "candidatos": [], "motivo": "EJEMPLO: nombre completo leído en la receta", "alertas": [], "remitente": "familiar@ejemplo.com", "asunto": "Receta", "fecha": "2026-10-08", "hora": "10:12"}},
-    {"op": "set", "collection": "pendientes", "doc_id": "20261008_1130_ej03_cfdi_ejemplo.xml", "data": {"id": "20261008_1130_ej03_cfdi_ejemplo.xml", "cliente": "Cliente Ejemplo Dos", "tipo": "CFDI factura", "confianza": "Alta", "prioridad": 3, "estado": "Recibido", "candidatos": [], "motivo": "EJEMPLO: Receptor del CFDI", "alertas": ["documento con 41 días de antigüedad al recibirse"], "remitente": "farmacia@ejemplo.com", "asunto": "Factura", "fecha": "2026-10-08", "hora": "11:30"}},
-    {"op": "set", "collection": "pendientes", "doc_id": "20261008_1145_ej04_endoso_ejemplo.pdf", "data": {"id": "20261008_1145_ej04_endoso_ejemplo.pdf", "cliente": null, "tipo": "Operación de seguro (no reembolso)", "confianza": "Ninguna", "prioridad": 3, "estado": "No es reembolso", "candidatos": [], "motivo": "EJEMPLO: endoso de póliza", "alertas": [], "remitente": "avisos@ejemplo.com", "asunto": "Endoso", "fecha": "2026-10-08", "hora": "11:45"}},
-    {"op": "set", "collection": "pendientes", "doc_id": "20261008_1203_ej05_informe_ejemplo.pdf", "data": {"id": "20261008_1203_ej05_informe_ejemplo.pdf", "cliente": "Cliente Ejemplo Tres", "tipo": "Informe médico", "confianza": "Baja", "prioridad": 1, "estado": "Revisar", "candidatos": [], "motivo": "EJEMPLO: coincidencia parcial del nombre", "alertas": [], "remitente": "clinica@ejemplo.com", "asunto": "Informe", "fecha": "2026-10-08", "hora": "12:03"}},
-    {"op": "set", "collection": "expedientes", "doc_id": "Cliente_Ejemplo_Uno~2026-10-01", "data": {"cliente": "Cliente Ejemplo Uno", "inicio": "2026-10-01", "ultimo": "2026-10-05", "documentos": 2, "tipos": ["CFDI factura", "Factura PDF"], "faltantes": ["receta", "informe médico"], "estado": "incompleto", "dias_sin_movimiento": 3, "total_facturado": 1500, "archivos": [{"nombre": "factura_ejemplo.pdf", "tipo": "Factura PDF", "enlace": "", "estado": "Recibido"}, {"nombre": "factura_ejemplo.xml", "tipo": "CFDI factura", "enlace": "", "estado": "Recibido"}]}},
-    {"op": "set", "collection": "expedientes", "doc_id": "Cliente_Ejemplo_Dos~2026-09-28", "data": {"cliente": "Cliente Ejemplo Dos", "inicio": "2026-09-28", "ultimo": "2026-09-30", "documentos": 3, "tipos": ["CFDI factura", "Factura PDF", "Receta"], "faltantes": ["informe médico"], "estado": "completo", "dias_sin_movimiento": 8, "total_facturado": 2300, "archivos": []}},
-    {"op": "set", "collection": "candidatos", "doc_id": "PERSONA_EJEMPLO_CUATRO", "data": {"nombre": "PERSONA EJEMPLO CUATRO", "archivos": ["20261008_0901_ej01_factura_ejemplo.pdf"]}}
+    {
+      "op": "set",
+      "collection": "monitor",
+      "doc_id": "clasificador",
+      "data": {
+        "rutina": "clasificador",
+        "hora": "2026-10-08T17:00:00-06:00",
+        "resultado": "ok",
+        "detalle": "EJEMPLO: 6 analizados, 3 movidos",
+        "kpis": {
+          "analizados": 6,
+          "movidos": 3,
+          "errores": 0,
+          "prioridad1": 2,
+          "prioridad2": 1,
+          "prioridad3": 3,
+          "expedientes_incompletos": 1,
+          "expedientes_completos": 1
+        }
+      }
+    },
+    {
+      "op": "set",
+      "collection": "monitor",
+      "doc_id": "resumen",
+      "data": {
+        "rutina": "resumen",
+        "hora": "2026-10-08T08:00:00-06:00",
+        "resultado": "ok",
+        "detalle": "EJEMPLO: 9 registros",
+        "asunto": "Reembolsos 08/10/2026 (ejemplo)"
+      }
+    },
+    {
+      "op": "set",
+      "collection": "catalogo",
+      "doc_id": "lista",
+      "data": {
+        "nombres": [
+          "Cliente Ejemplo Uno",
+          "Cliente Ejemplo Dos",
+          "Cliente Ejemplo Tres"
+        ]
+      }
+    },
+    {
+      "op": "set",
+      "collection": "pendientes",
+      "doc_id": "20261008_0901_ej01_factura_ejemplo.pdf",
+      "data": {
+        "id": "20261008_0901_ej01_factura_ejemplo.pdf",
+        "cliente": null,
+        "tipo": "Factura PDF",
+        "confianza": "Ninguna",
+        "prioridad": 1,
+        "estado": "Cliente desconocido",
+        "candidatos": [
+          "PERSONA EJEMPLO CUATRO"
+        ],
+        "motivo": "EJEMPLO: nombre leído no está en el catálogo",
+        "alertas": [],
+        "remitente": "escaner@ejemplo.com",
+        "asunto": "(Sin asunto)",
+        "fecha": "2026-10-08",
+        "hora": "09:01",
+        "carpeta_url": "https://arvalcommx-my.sharepoint.com/my?id=%2Fpersonal%2Fsoluciones%5Farval%5Fcom%5Fmx%2FDocuments%2FReembolsos%2F_Por%20identificar"
+      }
+    },
+    {
+      "op": "set",
+      "collection": "pendientes",
+      "doc_id": "20261008_1012_ej02_receta_ejemplo.pdf",
+      "data": {
+        "id": "20261008_1012_ej02_receta_ejemplo.pdf",
+        "cliente": "Cliente Ejemplo Uno",
+        "tipo": "Receta",
+        "confianza": "Media",
+        "prioridad": 2,
+        "estado": "Revisar",
+        "candidatos": [],
+        "motivo": "EJEMPLO: nombre completo leído en la receta",
+        "alertas": [],
+        "remitente": "familiar@ejemplo.com",
+        "asunto": "Receta",
+        "fecha": "2026-10-08",
+        "hora": "10:12",
+        "carpeta_url": "https://arvalcommx-my.sharepoint.com/my?id=%2Fpersonal%2Fsoluciones%5Farval%5Fcom%5Fmx%2FDocuments%2FReembolsos%2FClientes%2FCliente%20Ejemplo%20Uno%2F2026-10"
+      }
+    },
+    {
+      "op": "set",
+      "collection": "pendientes",
+      "doc_id": "20261008_1130_ej03_cfdi_ejemplo.xml",
+      "data": {
+        "id": "20261008_1130_ej03_cfdi_ejemplo.xml",
+        "cliente": "Cliente Ejemplo Dos",
+        "tipo": "CFDI factura",
+        "confianza": "Alta",
+        "prioridad": 3,
+        "estado": "Recibido",
+        "candidatos": [],
+        "motivo": "EJEMPLO: Receptor del CFDI",
+        "alertas": [
+          "documento con 41 días de antigüedad al recibirse"
+        ],
+        "remitente": "farmacia@ejemplo.com",
+        "asunto": "Factura",
+        "fecha": "2026-10-08",
+        "hora": "11:30",
+        "carpeta_url": "https://arvalcommx-my.sharepoint.com/my?id=%2Fpersonal%2Fsoluciones%5Farval%5Fcom%5Fmx%2FDocuments%2FReembolsos%2FClientes%2FCliente%20Ejemplo%20Dos%2F2026-10"
+      }
+    },
+    {
+      "op": "set",
+      "collection": "pendientes",
+      "doc_id": "20261008_1145_ej04_endoso_ejemplo.pdf",
+      "data": {
+        "id": "20261008_1145_ej04_endoso_ejemplo.pdf",
+        "cliente": null,
+        "tipo": "Operación de seguro (no reembolso)",
+        "confianza": "Ninguna",
+        "prioridad": 3,
+        "estado": "No es reembolso",
+        "candidatos": [],
+        "motivo": "EJEMPLO: endoso de póliza",
+        "alertas": [],
+        "remitente": "avisos@ejemplo.com",
+        "asunto": "Endoso",
+        "fecha": "2026-10-08",
+        "hora": "11:45",
+        "carpeta_url": "https://arvalcommx-my.sharepoint.com/my?id=%2Fpersonal%2Fsoluciones%5Farval%5Fcom%5Fmx%2FDocuments%2FReembolsos%2F_Por%20identificar"
+      }
+    },
+    {
+      "op": "set",
+      "collection": "pendientes",
+      "doc_id": "20261008_1203_ej05_informe_ejemplo.pdf",
+      "data": {
+        "id": "20261008_1203_ej05_informe_ejemplo.pdf",
+        "cliente": "Cliente Ejemplo Tres",
+        "tipo": "Informe médico",
+        "confianza": "Baja",
+        "prioridad": 1,
+        "estado": "Revisar",
+        "candidatos": [],
+        "motivo": "EJEMPLO: coincidencia parcial del nombre",
+        "alertas": [],
+        "remitente": "clinica@ejemplo.com",
+        "asunto": "Informe",
+        "fecha": "2026-10-08",
+        "hora": "12:03",
+        "carpeta_url": "https://arvalcommx-my.sharepoint.com/my?id=%2Fpersonal%2Fsoluciones%5Farval%5Fcom%5Fmx%2FDocuments%2FReembolsos%2FClientes%2FCliente%20Ejemplo%20Tres%2F2026-10"
+      }
+    },
+    {
+      "op": "set",
+      "collection": "expedientes",
+      "doc_id": "Cliente_Ejemplo_Uno~2026-10-01",
+      "data": {
+        "cliente": "Cliente Ejemplo Uno",
+        "inicio": "2026-10-01",
+        "ultimo": "2026-10-05",
+        "documentos": 2,
+        "tipos": [
+          "CFDI factura",
+          "Factura PDF"
+        ],
+        "faltantes": [
+          "receta",
+          "informe médico"
+        ],
+        "estado": "incompleto",
+        "dias_sin_movimiento": 3,
+        "total_facturado": 1500,
+        "archivos": [
+          {
+            "nombre": "factura_ejemplo.pdf",
+            "tipo": "Factura PDF",
+            "enlace": "",
+            "estado": "Recibido"
+          },
+          {
+            "nombre": "factura_ejemplo.xml",
+            "tipo": "CFDI factura",
+            "enlace": "",
+            "estado": "Recibido"
+          }
+        ],
+        "carpeta_url": "https://arvalcommx-my.sharepoint.com/my?id=%2Fpersonal%2Fsoluciones%5Farval%5Fcom%5Fmx%2FDocuments%2FReembolsos%2FClientes%2FCliente%20Ejemplo%20Uno%2F2026-10"
+      }
+    },
+    {
+      "op": "set",
+      "collection": "expedientes",
+      "doc_id": "Cliente_Ejemplo_Dos~2026-09-28",
+      "data": {
+        "cliente": "Cliente Ejemplo Dos",
+        "inicio": "2026-09-28",
+        "ultimo": "2026-09-30",
+        "documentos": 3,
+        "tipos": [
+          "CFDI factura",
+          "Factura PDF",
+          "Receta"
+        ],
+        "faltantes": [
+          "informe médico"
+        ],
+        "estado": "completo",
+        "dias_sin_movimiento": 8,
+        "total_facturado": 2300,
+        "archivos": [],
+        "carpeta_url": "https://arvalcommx-my.sharepoint.com/my?id=%2Fpersonal%2Fsoluciones%5Farval%5Fcom%5Fmx%2FDocuments%2FReembolsos%2FClientes%2FCliente%20Ejemplo%20Dos%2F2026-09"
+      }
+    },
+    {
+      "op": "set",
+      "collection": "candidatos",
+      "doc_id": "PERSONA_EJEMPLO_CUATRO",
+      "data": {
+        "nombre": "PERSONA EJEMPLO CUATRO",
+        "archivos": [
+          "20261008_0901_ej01_factura_ejemplo.pdf"
+        ]
+      }
+    }
   ]
 }
