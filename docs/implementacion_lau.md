@@ -68,6 +68,18 @@ Decisión pendiente para Arval: si los expedientes históricos se quedan en el O
 
 **Comprobación:** Lau se envía un correo de prueba desde su celular; aparece en su bandeja y en la de la cuenta de servicio con el remitente original.
 
+## Paso 2b. Comprobar que Claude ve el buzón y que los correos generan expedientes (Joel con Claude, 20 minutos)
+
+Sirve para validar la cuenta recién configurada antes de importar el flujo. Claude solo lee; no abre documentos, no mueve ni borra correos y no envía nada.
+
+1. En el Chrome donde ya está la sesión de Outlook de la cuenta de servicio, tener abierto `outlook.cloud.microsoft/mail/` con esa cuenta (el avatar debe mostrar la cuenta de servicio, no la de Joel ni la de Lau).
+2. En Claude Code, con la extensión Claude in Chrome activa, pedir: "comprueba que tienes acceso al buzón". Claude abre una pestaña propia en el mismo Chrome y confirma que ve la bandeja de entrada y las carpetas, incluida `Duplicados - revisar`. Si no la ve, volver a iniciar sesión en Outlook en ese Chrome y repetir.
+3. Pedir el **mapa del buzón**: tabla con fecha, remitente, asunto y nombre de adjunto de los correos recientes, sin contenido de los documentos. En el mapa y en la conversación solo van metadatos, como exige la regla 1 de `CLAUDE.md`: el asunto de algunos correos trae el nombre de un paciente, así que ese dato no se copia fuera del buzón.
+4. Con el mapa, Claude estima qué expedientes saldrían. Cada correo con adjuntos genera una fila por documento en `tblRegistro`; los documentos del mismo cliente dentro de una ventana de 10 días forman un expediente, y la rutina calcula lo que falta (CFDI, factura PDF, receta, informe médico).
+5. Revisar con Lau los casos que no entran como reembolso: cartas de finiquito, carátulas de póliza, endosos y avisos de trámite de las aseguradoras (por ejemplo GNP Seguros). Se clasifican como `Operación de seguro (no reembolso)` y no abren expediente. Los remitentes de escaneo (por ejemplo `escaner@...`) llegan a veces a la pestaña **Otros**: revisar que Outlook no los esconda ahí; si pasa, marcar el remitente como Prioritario.
+
+**Comprobación:** Claude lista la bandeja de entrada con sus carpetas, entrega el mapa del buzón y Lau valida que los remitentes y tipos de documento corresponden a lo que ella recibe.
+
 ## Paso 3. Flujo 1 en Power Automate (Joel, 45 minutos)
 
 1. Generar el paquete con los ids del paso 1.4:
@@ -126,6 +138,7 @@ Cuando el organizador lo use más de una persona, la fuente de verdad pasa del E
 - [ ] 0.1 a 0.7 cumplidos
 - [ ] OneDrive `/Reembolsos` con Excel completo y catálogo cargado
 - [ ] Carpeta `Duplicados - revisar` y redirección de Lau activa con copia
+- [ ] Claude accede al buzón de la cuenta de servicio y entrega el mapa del buzón (paso 2b)
 - [ ] Flujo 1 importado, carpeta reelegida, encendido, prueba en verde
 - [ ] `selftest` en verde desde Claude Code de la cuenta de empresa
 - [ ] Panel publicado, compartido con Lau, `PANEL_URL` guardada
