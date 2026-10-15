@@ -1,4 +1,5 @@
 <title>Panel de reembolsos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
 <style>
 /* Layout: cabecera con semáforo, franja de indicadores, columna principal (pendientes) y columna lateral (expedientes, candidatos, acciones, pregunta). */
@@ -20,7 +21,7 @@
   --ok:#6ccf93; --ok-soft:#153726; --warn:#f2b85a; --warn-soft:#3d2c0c; --crit:#ff8d85; --crit-soft:#431b18;
   color-scheme:dark }
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
-.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:18px 40px;display:flex;flex-direction:column;gap:18px}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 40px;display:flex;flex-direction:column;gap:18px}
 h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
 h1{font-size:1.5rem;font-weight:800;letter-spacing:-.01em}
 h2{font-size:1.05rem;font-weight:700}
@@ -79,6 +80,28 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 .respuesta{white-space:pre-wrap;background:var(--surface-2);border-radius:8px;padding:10px 12px;font-size:.93rem}
 small.ts{color:var(--muted);font-variant-numeric:tabular-nums}
+/* Lo que se hizo: resumen de la organización de expedientes y de la última corrida */
+.hecho-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:860px){.hecho-grid{grid-template-columns:1fr}}
+.cifras{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+.cifra{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--surface-2)}
+.cifra .n{font-family:var(--display);font-weight:800;font-size:1.25rem;font-variant-numeric:tabular-nums}
+.cifra .l{font-size:.76rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.cifra.warn .n{color:var(--warn)} .cifra.crit .n{color:var(--crit)}
+.tabla-scroll{overflow-x:auto}
+table.t{border-collapse:collapse;width:100%;font-size:.9rem}
+table.t th{text-align:left;font-size:.76rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:4px 8px;border-bottom:1px solid var(--line)}
+table.t td{padding:5px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+table.t td.num,table.t th.num{text-align:right}
+.barras{display:flex;flex-direction:column;gap:5px}
+.barra{display:grid;grid-template-columns:minmax(0,11rem) minmax(0,1fr) 3.5rem;gap:8px;align-items:center;font-size:.86rem}
+.barra .pista{height:10px;border-radius:5px;background:var(--surface-2);overflow:hidden}
+.barra .relleno{height:100%;background:var(--accent);border-radius:5px}
+.barra .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.barra .k{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+details.exps summary{cursor:pointer;font-weight:600}
+.exp-lista{display:flex;flex-direction:column;gap:6px;max-height:420px;overflow:auto;margin-top:8px}
+.etapa{font-size:.78rem;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em;background:var(--accent-soft);color:var(--accent)}
 a{color:var(--accent)}
 </style>
 
@@ -103,6 +126,12 @@ a{color:var(--accent)}
     <div class="kpi"><div class="n" id="k-mov">–</div><div class="l">Movidos en la última corrida</div></div>
     <div class="kpi"><div class="n" id="k-cand">–</div><div class="l">Candidatos a cliente</div></div>
   </div>
+
+  <section id="secHecho">
+    <div class="sec-head"><h2>Lo que se hizo</h2><span id="hechoEtapa"></span><small class="ts" id="hechoHora"></small></div>
+    <div id="hechoCorrida" class="muted"></div>
+    <div id="hechoCuerpo" class="vacio">Aquí aparece el resumen de la organización de expedientes: cuántos archivos, clientes y eventos se encontraron, qué tipos de documento hay, qué se renombró o copió a la estructura estándar y qué expedientes tienen faltantes. Se llena cuando corre <code>cli.py organizar</code> o <code>cli.py semilla</code>.</div>
+  </section>
 
   <div class="cols">
     <section>
@@ -175,7 +204,7 @@ a{color:var(--accent)}
 <script>
 (function(){
   const $ = (id) => document.getElementById(id);
-  const estado = { pendientes: [], expedientes: [], candidatos: [], catalogo: [], monitor: {}, filtro: "todos", confirmados: new Set(), uid: null };
+  const estado = { organizacion: null, pendientes: [], expedientes: [], candidatos: [], catalogo: [], monitor: {}, filtro: "todos", confirmados: new Set(), uid: null };
   let db = null, sample = null;
 
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -355,7 +384,8 @@ a{color:var(--accent)}
 
   function suscribir(){
     const err = (e) => { if (e && e.code === "revoked") $("avisoDb").hidden = false; };
-    db.doc("monitor/clasificador").onSnapshot((s) => { estado.monitor.clasificador = s.exists ? s.data() : null; pintarSemaforo(); pintarKpis(); }, err);
+    db.doc("monitor/clasificador").onSnapshot((s) => { estado.monitor.clasificador = s.exists ? s.data() : null; pintarSemaforo(); pintarKpis(); pintarHecho(); }, err);
+    db.doc("organizacion/ultimo").onSnapshot((s) => { estado.organizacion = s.exists ? s.data() : null; pintarHecho(); }, err);
     db.doc("monitor/resumen").onSnapshot((s) => { estado.monitor.resumen = s.exists ? s.data() : null; pintarSemaforo(); }, err);
     db.doc("catalogo/lista").onSnapshot((s) => { estado.catalogo = s.exists ? (s.data().nombres || []) : []; pintarPendientes(); pintarSelectEntrada(); }, err);
     db.collection("pendientes").limit(500).onSnapshot((s) => { estado.pendientes = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarPendientes(); pintarKpis(); }, err);
@@ -378,6 +408,40 @@ a{color:var(--accent)}
       ${narr ? `<div style="border-left:3px solid var(--accent);padding-left:10px;margin-bottom:8px">${narr}</div>` : ""}
       <div class="semaforo" style="margin-bottom:8px">${conteos}</div>
       ${abiertos ? `<ul style="margin:0;padding-left:18px;font-size:.9rem">${abiertos}</ul>` : ""}`;
+  }
+
+  const ETAPAS = { "propuesta": "propuesta, sin mover nada", "solo carpetas": "carpetas creadas", "semilla construida": "estructura construida", "aplicado": "aplicado en OneDrive" };
+  function pintarHecho(){
+    const c = estado.monitor.clasificador;
+    $("hechoCorrida").textContent = c ? `Última corrida del clasificador (${horaCorta(c.hora)}): ${c.detalle || "sin detalle"}${c.kpis && c.kpis.altas ? `, ${c.kpis.altas} altas al catálogo` : ""}.` : "";
+    const o = estado.organizacion;
+    if (!o) return;
+    const cont = $("hechoCuerpo"); cont.classList.remove("vacio");
+    $("hechoEtapa").innerHTML = `<span class="etapa">${esc(ETAPAS[o.etapa] || o.etapa)}</span>`;
+    $("hechoHora").textContent = horaCorta(o.hora);
+    const s = o.semilla || {};
+    const cifra = (n, l, cls = "") => `<div class="cifra ${cls}"><div class="n">${(n ?? 0).toLocaleString("es-MX")}</div><div class="l">${l}</div></div>`;
+    const cifras = [cifra(o.archivos, "archivos"), cifra(o.clientes, "clientes"), cifra(o.eventos, "eventos"),
+      o.semilla ? cifra((s.copiados || 0) + (s["ya estaban"] || 0), "en la estructura nueva") : cifra(o.renombres_propuestos, "renombres propuestos"),
+      cifra(o.clientes_con_archivos_sueltos, "clientes con archivos sueltos", o.clientes_con_archivos_sueltos ? "warn" : ""),
+      cifra(o.requieren_lectura, "por leer (escaneos y fotos)", o.requieren_lectura ? "warn" : ""),
+      cifra(o.conflictos, "carpeta y contenido no coinciden", o.conflictos ? "crit" : ""),
+      cifra(o.duplicados, "duplicados"), cifra(o.dicom, "imágenes DICOM (no se leen)"), cifra(o.fuera_de_estructura, "fuera de estructura", o.fuera_de_estructura ? "warn" : "")].join("");
+    const carteras = (o.carteras || []).map(k => `<tr><td>${esc(k.cartera)}</td><td class="num">${k.clientes}</td><td class="num">${k.eventos}</td><td class="num">${k.archivos.toLocaleString("es-MX")}</td></tr>`).join("");
+    const tipos = Object.entries(o.tipos || {}); const max = Math.max(1, ...tipos.map(([, n]) => n));
+    const barras = tipos.map(([k, n]) => `<div class="barra"><span class="k" title="${esc(k)}">${esc(k)}</span><span class="pista"><span class="relleno" style="display:block;width:${(n / max * 100).toFixed(1)}%"></span></span><span class="v">${n.toLocaleString("es-MX")}</span></div>`).join("");
+    const exps = o.expedientes || [];
+    const conFaltantes = exps.filter(e => (e.faltantes || []).length);
+    const lista = conFaltantes.map(e => `<div class="exp"><div class="fila"><strong>${esc(e.cliente)}</strong><span class="muted">${esc(e.cartera)}</span></div>
+      <div class="muted">${esc(e.evento)} · ${e.documentos} doc. · ${esc(e.inicio)} a ${esc(e.ultimo)}${e.por_leer ? ` · ${e.por_leer} por leer` : ""}</div>
+      <div>Falta: ${esc(e.faltantes.join(", "))}</div></div>`).join("");
+    const semillaTxt = o.semilla ? `<div class="muted">Destino: ${esc(o.destino || "")} · ${Object.entries(s).map(([k, v]) => `${esc(k)}: ${v}`).join(" · ")}</div>` : "";
+    cont.innerHTML = `<div class="cifras">${cifras}</div>${semillaTxt}
+      <div class="hecho-grid">
+        <div><h3 style="font-size:.95rem;margin-bottom:6px">Por cartera</h3><div class="tabla-scroll"><table class="t"><thead><tr><th>Cartera</th><th class="num">Clientes</th><th class="num">Eventos</th><th class="num">Archivos</th></tr></thead><tbody>${carteras}</tbody></table></div></div>
+        <div><h3 style="font-size:.95rem;margin-bottom:6px">Tipos de documento</h3><div class="barras">${barras}</div></div>
+      </div>
+      <details class="exps"><summary>Expedientes con faltantes: ${conFaltantes.length} de ${o.expedientes_total ?? exps.length}</summary><div class="exp-lista">${lista || '<div class="vacio">Ninguno con faltantes.</div>'}</div></details>`;
   }
 
   function pintarBitacora(eventos){

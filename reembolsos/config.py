@@ -42,11 +42,12 @@ class Config:
         return self.onedrive_web + quote(ruta, safe="")
 
 
-def cargar():
+def cargar(credenciales=True):
+    """credenciales=False para comandos que solo trabajan con archivos locales (organizar, semilla)."""
     return Config(
-        tenant_id=_env("M365_TENANT_ID", obligatorio=True),
-        client_id=_env("M365_CLIENT_ID", obligatorio=True),
-        client_secret=_env("M365_CLIENT_SECRET", obligatorio=True),
+        tenant_id=_env("M365_TENANT_ID", "", obligatorio=credenciales),
+        client_id=_env("M365_CLIENT_ID", "", obligatorio=credenciales),
+        client_secret=_env("M365_CLIENT_SECRET", "", obligatorio=credenciales),
         usuario=_env("M365_USUARIO", "soluciones@arval.com.mx"),
         correo_lau=_env("CORREO_RESUMEN", "ltorres@arval.com.mx"),
         ruta_base=_env("RUTA_BASE", "/Reembolsos"),

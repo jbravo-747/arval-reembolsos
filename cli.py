@@ -10,6 +10,10 @@
   python cli.py resumen --preparar       arma trabajo/resumen_datos.json para que el agente escriba la narrativa
   python cli.py resumen [--modo ...]     arma el resumen (con trabajo/narrativa.txt si existe); en modo aplica lo envía
   python cli.py borradores [--modo ...]  deja en el buzón borradores pidiendo documentos faltantes (modo aplica)
+  python cli.py organizar --local <carpeta>
+                                         analiza la copia local de los expedientes de Lau y propone la estructura estándar
+  python cli.py semilla --local <carpeta> --destino <carpeta nueva> [--solo-carpetas]
+                                         arma la estructura estándar con copias renombradas, lista para sincronizar a OneDrive
   python cli.py latido <rutina> <resultado> [detalle]
   python cli.py decisiones-locales       (respaldo) OCR de Windows en lugar del agente; solo en un equipo Windows
 
@@ -392,17 +396,9 @@ def ingresar(cfg):
 
 
 # ---------- indexar expedientes hechos a mano ----------
-TIPO_POR_PALABRA = [("receta", "Receta"), ("informe", "Informe médico"), ("estudio", "Estudio o resultado"), ("resultado", "Estudio o resultado"),
-                    ("factura", "Factura PDF"), ("recibo", "Factura PDF"), ("ine", "Identificación"), ("curp", "Identificación"),
-                    ("identificaci", "Identificación"), ("poliza", "Operación de seguro (no reembolso)"), ("endoso", "Operación de seguro (no reembolso)")]
-
-
 def _tipo_por_nombre(nombre):
-    n = normalizar(nombre)
-    for palabra, tipo in TIPO_POR_PALABRA:
-        if palabra.upper() in n:
-            return tipo
-    return ""
+    from reembolsos.organizacion import tipo_por_nombre
+    return tipo_por_nombre(nombre)
 
 
 def indexar(cfg, ruta, usuario=None, max_mb=25):
@@ -488,6 +484,51 @@ def indexar(cfg, ruta, usuario=None, max_mb=25):
     print(f"detalle: {cfg.trabajo / 'indexacion.json'} | catálogo sugerido: {cfg.trabajo / 'catalogo_sugerido.csv'}")
 
 
+# ---------- organizar la copia local de los expedientes de Lau y construir la semilla ----------
+def organizar(cfg, local, leer=True):
+    """Analiza la copia local (<Cartera>/<Cliente>/<Evento>/...) y propone la estructura estándar. No toca nada.
+    Escribe trabajo/organizacion.json (detalle), organizacion_plan.csv (para que Lau revise), catalogo_semilla.csv
+    y organizacion_resumen.json (lo que el panel muestra en "Lo que se hizo")."""
+    import csv
+    from reembolsos import organizacion as org
+    analisis = org.analizar(local, leer, cfg.paginas_max)
+    _escribir_json(cfg.trabajo / "organizacion.json", {"generado": ahora().isoformat(timespec="seconds"), "raiz": str(local), **analisis})
+    with (cfg.trabajo / "organizacion_plan.csv").open("w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.writer(fh)
+        w.writerow(["RutaActual", "RutaPropuesta", "Tipo", "Fecha", "FechaPor", "Metodo", "Conflicto", "DuplicadoDe"])
+        for a in analisis["archivos"]:
+            w.writerow([a["ruta"], a["ruta_propuesta"] or "", a["tipo"], a["fecha"], a["fecha_origen"], a["metodo"],
+                        a["cliente_contenido"] if a["conflicto"] else "", a["duplicado_de"] or ""])
+    with (cfg.trabajo / "catalogo_semilla.csv").open("w", newline="", encoding="utf-8-sig") as fh:
+        filas = org.catalogo_semilla(analisis)
+        w = csv.DictWriter(fh, fieldnames=["NombreCliente", "Cartera", "Correo", "RFC", "Alias", "Tipo"]); w.writeheader(); w.writerows(filas)
+    _escribir_json(cfg.trabajo / "organizacion_resumen.json", _resumen_organizacion(analisis, "propuesta"))
+    r = analisis["resumen"]
+    print(f"archivos: {r['archivos']} ({r['mb']} MB) | clientes: {r['clientes']} | eventos: {r['eventos']} | "
+          f"renombres propuestos: {r['renombres_propuestos']} | DICOM: {r['dicom']} | por leer: {r['requieren_lectura']} | "
+          f"conflictos: {r['conflictos']} | duplicados: {r['duplicados']}")
+    print(f"plan para Lau: {cfg.trabajo / 'organizacion_plan.csv'} | resumen para el panel: {cfg.trabajo / 'organizacion_resumen.json'}")
+
+
+def semilla(cfg, local, destino, solo_carpetas=False):
+    """Construye en destino la estructura estándar con copias renombradas, usando el análisis de organizar."""
+    from reembolsos import organizacion as org
+    analisis = _leer_json(cfg.trabajo / "organizacion.json", None)
+    if not analisis or Path(analisis["raiz"]).resolve() != Path(local).resolve():
+        sys.exit("ejecuta primero: python cli.py organizar --local <misma carpeta>")
+    conteo = org.construir_semilla(analisis, local, destino, solo_carpetas)
+    resumen = _resumen_organizacion(analisis, "solo carpetas" if solo_carpetas else "semilla construida")
+    resumen.update(destino=str(destino), semilla=conteo)
+    _escribir_json(cfg.trabajo / "organizacion_resumen.json", resumen)
+    print("semilla:", ", ".join(f"{k}: {v}" for k, v in conteo.items()), f"| índice: {Path(destino) / '_indice_semilla.csv'}")
+
+
+def _resumen_organizacion(analisis, etapa):
+    """Documento organizacion/ultimo del panel: solo metadatos (carpetas, tipos y conteos), nunca contenido."""
+    return {"hora": ahora().isoformat(timespec="seconds"), "etapa": etapa, **analisis["resumen"],
+            "expedientes": analisis["expedientes"][:400], "expedientes_total": len(analisis["expedientes"])}
+
+
 # ---------- latido ----------
 def latido(cfg, rutina, resultado, detalle=""):
     g = Graph(cfg)
@@ -542,15 +583,20 @@ def decisiones_locales(cfg):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("comando", choices=["selftest", "pull", "apply", "resumen", "borradores", "ingresar", "indexar", "latido", "decisiones-locales"])
+    p.add_argument("comando", choices=["selftest", "pull", "apply", "resumen", "borradores", "ingresar", "indexar", "organizar", "semilla",
+                                       "latido", "decisiones-locales"])
     p.add_argument("args", nargs="*")
     p.add_argument("--modo", choices=["propone", "aplica"])
     p.add_argument("--todos", action="store_true")
     p.add_argument("--preparar", action="store_true")
     p.add_argument("--ruta", help="indexar: carpeta de OneDrive con los expedientes hechos a mano, p. ej. /Reembolsos Lau")
     p.add_argument("--usuario", help="indexar: dueño del OneDrive si no es la cuenta de servicio, p. ej. ltorres@arval.com.mx")
+    p.add_argument("--local", help="organizar/semilla: copia local de los expedientes, p. ej. D:\\Arval\\Expedientes\\SINIESTROS")
+    p.add_argument("--destino", help="semilla: carpeta nueva donde se arma la estructura estándar (fuera de --local)")
+    p.add_argument("--sin-leer", action="store_true", help="organizar: no abre PDF ni XML (solo nombres y carpetas)")
+    p.add_argument("--solo-carpetas", action="store_true", help="semilla: crea las carpetas sin copiar archivos")
     a = p.parse_args()
-    cfg = cargar()
+    cfg = cargar(credenciales=a.comando not in ("organizar", "semilla"))
     if a.modo:
         cfg = cfg.__class__(**{**cfg.__dict__, "modo": a.modo})
     cfg.trabajo.mkdir(parents=True, exist_ok=True)
@@ -570,6 +616,14 @@ def main():
         if not a.ruta:
             sys.exit("uso: indexar --ruta '/carpeta de expedientes' [--usuario correo@arval.com.mx]")
         indexar(cfg, a.ruta, a.usuario)
+    elif a.comando == "organizar":
+        if not a.local:
+            sys.exit("uso: organizar --local <carpeta> [--sin-leer]")
+        organizar(cfg, a.local, not a.sin_leer)
+    elif a.comando == "semilla":
+        if not a.local or not a.destino:
+            sys.exit("uso: semilla --local <carpeta original> --destino <carpeta nueva> [--solo-carpetas]")
+        semilla(cfg, a.local, a.destino, a.solo_carpetas)
     elif a.comando == "latido":
         if len(a.args) < 2:
             sys.exit("uso: latido <rutina> <resultado> [detalle]")

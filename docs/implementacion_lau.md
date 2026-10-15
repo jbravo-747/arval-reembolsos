@@ -58,6 +58,24 @@ Lau ya tiene carpetas por cliente con sus documentos. No se mueven ni se renombr
 
 **Comprobación:** `indexacion.json` sin conflictos sin resolver; el panel muestra expedientes históricos por cliente.
 
+### Variante con copia local: organizar y construir la semilla
+
+Cuando la carpeta de expedientes se descarga completa (p. ej. `SINIESTROS`, estructura `<Cartera>/<Cliente>/<Evento>/...`), no hacen falta credenciales de Graph:
+
+1. Guardar la descarga fuera del repositorio, p. ej. `D:\Arval\Expedientes\SINIESTROS`.
+2. Análisis, sin tocar nada:
+   ```bash
+   python cli.py organizar --local "D:\Arval\Expedientes\SINIESTROS"
+   ```
+   Escribe en `trabajo/`: `organizacion_plan.csv` (ruta actual → ruta propuesta, tipo, fecha, conflictos, duplicados) para revisarlo con Lau, `catalogo_semilla.csv` (clientes con su cartera para la hoja `Clientes`) y `organizacion_resumen.json`.
+3. Publicar `organizacion_resumen.json` en el panel como documento `organizacion/ultimo` (ArtifactData `set`): aparece en la sección "Lo que se hizo".
+4. Con el plan aprobado, construir la semilla: copias con la estructura y los nombres estándar, en una carpeta nueva que después se sube o sincroniza a la carpeta de expedientes del equipo (`/Arval` en el OneDrive de soluciones@):
+   ```bash
+   python cli.py semilla --local "D:\Arval\Expedientes\SINIESTROS" --destino "D:\Arval\Expedientes_estandar"
+   ```
+   Estructura: `<Cartera>/<Cliente>/<AAAA-MM_Evento>/<AAAAMMDD>_<TIPO>_<nn>.<ext>`; los archivos sueltos del cliente van a `_Sin evento`, las imágenes DICOM a `Imagenes DICOM` con su nombre original, lo que no tiene cliente a `_Por identificar`. Los duplicados exactos no se copian. `_indice_semilla.csv` guarda la relación ruta original → ruta nueva. El original nunca se modifica; `--solo-carpetas` crea solo el árbol. Volver a publicar el resumen en el panel.
+5. Al terminar la migración, borrar la copia local (paso 6.4).
+
 Decisión pendiente para Arval: si los expedientes históricos se quedan en el OneDrive de Lau (indexados, con enlace) o se copian a `/Reembolsos/Clientes/<cliente>/<mes>` de la cuenta de servicio para tener todo junto. La copia la hace Claude por Graph en una sesión; recomendable si Lau cambiará de puesto algún día.
 
 ## Paso 2. Outlook (Joel con la sesión de la cuenta de servicio; la regla, con Lau presente)

@@ -10,6 +10,8 @@ ejecutan rutinas de Claude en la nube y sesiones de Claude Code. Léelo completo
 - `reembolsos/catalogo.py`: catálogo de clientes y comparación de nombres (sin acentos ni mayúsculas).
 - `reembolsos/clasificacion.py`: escala de confianza y prioridad, estados, lectura previa de XML y PDF con texto.
 - `reembolsos/resumen.py`: correo diario ordenado por prioridad.
+- `reembolsos/organizacion.py`: análisis de la copia local de los expedientes de Lau (`cli.py organizar`) y construcción de la
+  estructura estándar con copias renombradas (`cli.py semilla`). Nunca modifica la carpeta original.
 - `docs/`: plan, prerrequisitos, guía de ejecución, instrucciones de cada rutina.
 - `panel/panel.html`: artifact "Panel de reembolsos" (base de datos compartida `db`).
 

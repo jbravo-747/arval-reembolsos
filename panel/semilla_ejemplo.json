@@ -299,6 +299,139 @@
         "evento": "resumen",
         "detalle": "EJEMPLO: Reembolsos 08/10/2026: 2 por decidir, 1 por confirmar"
       }
+    },
+    {
+      "op": "set",
+      "collection": "organizacion",
+      "doc_id": "ultimo",
+      "data": {
+        "hora": "2026-10-08T18:00:00-06:00",
+        "etapa": "propuesta",
+        "archivos": 64,
+        "mb": 120,
+        "clientes": 3,
+        "eventos": 4,
+        "clientes_con_archivos_sueltos": 1,
+        "fuera_de_estructura": 2,
+        "renombres_propuestos": 55,
+        "dicom": 7,
+        "requieren_lectura": 12,
+        "conflictos": 1,
+        "duplicados": 3,
+        "fecha_por": {
+          "documento": 10,
+          "nombre": 20,
+          "modificación": 34
+        },
+        "tipos": {
+          "Factura PDF": 18,
+          "Otro": 14,
+          "CFDI factura": 10,
+          "Receta": 8,
+          "Estudio o resultado": 7,
+          "Informe médico": 5,
+          "Operación de seguro (no reembolso)": 2
+        },
+        "extensiones": {
+          ".pdf": 45,
+          ".xml": 10,
+          ".dcm": 7,
+          ".jpg": 2
+        },
+        "carteras": [
+          {
+            "cartera": "CARTERA EJEMPLO A",
+            "clientes": 2,
+            "eventos": 3,
+            "archivos": 48
+          },
+          {
+            "cartera": "CARTERA EJEMPLO B",
+            "clientes": 1,
+            "eventos": 1,
+            "archivos": 14
+          }
+        ],
+        "expedientes": [
+          {
+            "cartera": "CARTERA EJEMPLO A",
+            "cliente": "Cliente Ejemplo Uno",
+            "evento": "REEMBOLSO 1 (ejemplo)",
+            "documentos": 6,
+            "inicio": "2026-03-02",
+            "ultimo": "2026-03-20",
+            "tipos": [
+              "CFDI factura",
+              "Factura PDF"
+            ],
+            "faltantes": [
+              "receta",
+              "informe médico"
+            ],
+            "dicom": 0,
+            "por_leer": 2,
+            "conflictos": 0
+          },
+          {
+            "cartera": "CARTERA EJEMPLO A",
+            "cliente": "Cliente Ejemplo Uno",
+            "evento": "_Sin evento",
+            "documentos": 4,
+            "inicio": "2025-11-10",
+            "ultimo": "2026-01-05",
+            "tipos": [
+              "Otro",
+              "Receta"
+            ],
+            "faltantes": [
+              "CFDI (XML)",
+              "factura en PDF",
+              "informe médico"
+            ],
+            "dicom": 0,
+            "por_leer": 1,
+            "conflictos": 1
+          },
+          {
+            "cartera": "CARTERA EJEMPLO A",
+            "cliente": "Cliente Ejemplo Dos",
+            "evento": "PAGO 2 (ejemplo)",
+            "documentos": 12,
+            "inicio": "2026-05-04",
+            "ultimo": "2026-06-01",
+            "tipos": [
+              "CFDI factura",
+              "Factura PDF",
+              "Informe médico",
+              "Receta"
+            ],
+            "faltantes": [],
+            "dicom": 0,
+            "por_leer": 0,
+            "conflictos": 0
+          },
+          {
+            "cartera": "CARTERA EJEMPLO B",
+            "cliente": "Cliente Ejemplo Tres",
+            "evento": "PROGRAMACION (ejemplo)",
+            "documentos": 14,
+            "inicio": "2026-07-01",
+            "ultimo": "2026-07-15",
+            "tipos": [
+              "Estudio o resultado",
+              "Factura PDF",
+              "Receta"
+            ],
+            "faltantes": [
+              "CFDI (XML)"
+            ],
+            "dicom": 7,
+            "por_leer": 3,
+            "conflictos": 0
+          }
+        ],
+        "expedientes_total": 4
+      }
     }
   ]
 }

@@ -1,7 +1,7 @@
 """Catálogo de clientes (hoja Clientes de Control_Reembolsos.xlsx) y comparación de nombres.
 
 Columnas usadas: Correo, NombreCliente, Tipo (vacío o Cliente = cliente; Escaner/Aseguradora/Aviso/Ignorar = no),
-Alias (otra forma del nombre), RFC.
+Alias (otra forma del nombre), RFC, Cartera (opcional).
 """
 import re
 import unicodedata
@@ -25,6 +25,7 @@ class Cliente:
         self.tipo = str(fila.get("Tipo") or "").strip().lower()
         self.alias = str(fila.get("Alias") or "").strip()
         self.rfc = str(fila.get("RFC") or "").strip().upper()
+        self.cartera = str(fila.get("Cartera") or "").strip()   # empresa contratante (ARVAL CLIENTES, SAYER CLIENTES...)
         self.claves = {c for c in (normalizar(self.nombre), normalizar(self.alias)) if len(c) >= 6}
 
     @property

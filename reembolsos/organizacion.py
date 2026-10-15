@@ -1,0 +1,258 @@
+"""Organización de los expedientes que Lau ya armó a mano, a partir de una copia local de la carpeta.
+
+Estructura que se espera (la que Lau usa en SINIESTROS):  <Cartera>/<Cliente>/<Evento>/<subcarpetas...>/<archivo>
+Los archivos sueltos en la carpeta del cliente quedan "sin evento".
+
+Para cada archivo deduce cartera, cliente, evento, tipo de documento y fecha, y propone la ruta y el nombre estándar.
+No mueve ni renombra nada: escribe un plan para que Lau lo revise y un resumen para el panel (solo metadatos).
+"""
+import hashlib
+import re
+from collections import Counter, defaultdict
+from datetime import datetime
+from pathlib import Path
+
+from . import clasificacion as cl
+from .catalogo import Catalogo, normalizar
+from .expedientes import ETIQUETAS, REQUISITOS
+
+TIPO_POR_PALABRA = [("receta", "Receta"), ("informe", "Informe médico"), ("estudio", "Estudio o resultado"), ("resultado", "Estudio o resultado"),
+                    ("factura", "Factura PDF"), ("recibo", "Factura PDF"), ("ine", "Identificación"), ("curp", "Identificación"),
+                    ("identificaci", "Identificación"), ("poliza", "Operación de seguro (no reembolso)"), ("endoso", "Operación de seguro (no reembolso)")]
+TIPO_CORTO = {"CFDI factura": "CFDI", "CFDI recibo de honorarios": "CFDI-HON", "CFDI otro": "CFDI-OTRO", "Factura PDF": "FACTURA",
+              "Receta": "RECETA", "Informe médico": "INFORME", "Estudio o resultado": "ESTUDIO", "Identificación": "ID",
+              "Operación de seguro (no reembolso)": "SEGURO", "Otro": "DOC"}
+EXT_DICOM = {".dcm"}
+SIN_EVENTO = "_Sin evento"
+CARPETA_DICOM = "Imagenes DICOM"
+
+
+def tipo_por_nombre(texto):
+    n = normalizar(texto)
+    for palabra, tipo in TIPO_POR_PALABRA:
+        if re.search(rf"\b{palabra.upper()}", n):
+            return tipo
+    return ""
+
+
+def fecha_en_nombre(nombre):
+    """AAAAMMDD, AAAA-MM-DD o DD-MM-AAAA en el nombre; None si no hay una fecha válida."""
+    for patron, orden in ((r"(20\d{2})[-_. ]?(\d{2})[-_. ]?(\d{2})", "amd"), (r"(\d{2})[-_. ](\d{2})[-_. ](20\d{2})", "dma")):
+        for m in re.finditer(patron, nombre):
+            a, b, c = m.groups()
+            anio, mes, dia = (a, b, c) if orden == "amd" else (c, b, a)
+            try:
+                return datetime(int(anio), int(mes), int(dia)).date()
+            except ValueError:
+                continue
+    return None
+
+
+def limpiar(texto, maximo=60):
+    """Nombre seguro para OneDrive: sin caracteres prohibidos ni espacios repetidos."""
+    t = re.sub(r'[\\/:*?"<>|#%]+', " ", str(texto or ""))
+    return re.sub(r"\s+", " ", t).strip(" .")[:maximo].strip() or "SIN NOMBRE"
+
+
+def etiqueta_evento(nombre_carpeta, fecha):
+    """Carpeta de evento estándar: AAAA-MM_<nombre que Lau le dio> (si ya empieza con fecha, se respeta)."""
+    limpio = limpiar(nombre_carpeta)
+    if re.match(r"^20\d{2}-\d{2}", limpio) or not fecha:
+        return limpio
+    return f"{fecha:%Y-%m}_{limpio}"
+
+
+def _sha1(ruta):
+    h = hashlib.sha1()
+    with open(ruta, "rb") as fh:
+        for trozo in iter(lambda: fh.read(1 << 20), b""):
+            h.update(trozo)
+    return h.hexdigest()
+
+
+def recorrer(raiz):
+    """(partes relativas, Path) de cada archivo bajo raiz, en orden estable."""
+    raiz = Path(raiz)
+    return [(p.relative_to(raiz).parts, p) for p in sorted(raiz.rglob("*")) if p.is_file()]
+
+
+def analizar(raiz, leer=True, paginas_max=3):
+    """Analiza la copia local y devuelve {"archivos": [...], "resumen": {...}, "expedientes": [...]}."""
+    raiz = Path(raiz)
+    entradas = recorrer(raiz)
+    clientes_carpeta = sorted({partes[1] for partes, _ in entradas if len(partes) >= 3})
+    catalogo = Catalogo([{"NombreCliente": c} for c in clientes_carpeta])
+
+    # Duplicados: mismo tamaño y mismo contenido
+    por_tamano = defaultdict(list)
+    for _, p in entradas:
+        por_tamano[p.stat().st_size].append(p)
+    huella = {}
+    for grupo in por_tamano.values():
+        if len(grupo) > 1:
+            for p in grupo:
+                huella[p] = _sha1(p)
+    primero = {}
+
+    archivos = []
+    for partes, p in entradas:
+        cartera = partes[0] if len(partes) >= 3 else ""
+        cliente = partes[1] if len(partes) >= 3 else ""
+        evento = partes[2] if len(partes) >= 4 else ""
+        subruta = "/".join(partes[3:-1]) if len(partes) >= 5 else ""
+        ext = p.suffix.lower()
+        info = {"ruta": "/".join(partes), "nombre": p.name, "cartera": cartera, "cliente": cliente, "evento": evento,
+                "subcarpeta": subruta, "ext": ext, "tamano": p.stat().st_size, "dicom": ext in EXT_DICOM,
+                "metodo": "", "cliente_contenido": None, "conflicto": False, "requiere_lectura": False, "duplicado_de": None}
+        pre = {}
+        if info["dicom"]:
+            info["metodo"] = "imagen DICOM: no se lee"
+        elif ext in cl.EXT_IMAGEN:
+            info["metodo"], info["requiere_lectura"] = "imagen: requiere lectura del agente", True
+        elif leer and ext not in cl.EXT_IGNORAR:
+            pre = cl.preanalisis(p, catalogo, paginas_max)
+            info["metodo"] = pre["metodo"]
+            info["requiere_lectura"] = pre["metodo"].startswith("escaneado")
+            if pre.get("cliente") and pre.get("confianza") == "Alta":
+                info["cliente_contenido"] = pre["cliente"]
+                info["conflicto"] = bool(cliente) and pre["cliente"] != cliente
+        if info["dicom"]:
+            tipo = "Estudio o resultado"
+        elif pre.get("metodo") == "Receptor CFDI":
+            tipo = "CFDI factura"
+        else:
+            tipo = tipo_por_nombre(p.name) or tipo_por_nombre(subruta) or tipo_por_nombre(evento) or "Otro"
+        info["tipo"] = tipo
+
+        f_doc = None
+        if pre.get("fecha_doc"):
+            try:
+                f_doc = datetime.fromisoformat(pre["fecha_doc"][:10]).date()
+            except ValueError:
+                f_doc = None
+        f_nombre = fecha_en_nombre(p.name)
+        fecha = f_doc or f_nombre or datetime.fromtimestamp(p.stat().st_mtime).date()
+        info["fecha"] = str(fecha)
+        info["fecha_origen"] = "documento" if f_doc else "nombre" if f_nombre else "modificación"
+
+        if p in huella:
+            clave = huella[p]
+            if clave in primero:
+                info["duplicado_de"] = primero[clave]
+            else:
+                primero[clave] = info["ruta"]
+        archivos.append(info)
+
+    _proponer(archivos)
+    return {"archivos": archivos, "resumen": _resumir(archivos), "expedientes": _expedientes(archivos)}
+
+
+def _proponer(archivos):
+    """Ruta y nombre estándar: <Cartera>/<Cliente>/<AAAA-MM_Evento>/<AAAAMMDD>_<TIPO>_<nn>.<ext>"""
+    fecha_evento = {}
+    for a in archivos:
+        k = (a["cartera"], a["cliente"], a["evento"])
+        fecha_evento[k] = min(fecha_evento.get(k, a["fecha"]), a["fecha"])
+    usados = Counter()
+    for a in archivos:
+        if not a["cliente"]:
+            a["ruta_propuesta"] = None
+            continue
+        f_ev = datetime.fromisoformat(fecha_evento[(a["cartera"], a["cliente"], a["evento"])]).date()
+        evento = etiqueta_evento(a["evento"], f_ev) if a["evento"] else SIN_EVENTO
+        carpeta = f"{limpiar(a['cartera'])}/{limpiar(a['cliente'])}/{evento}"
+        if a["dicom"]:
+            a["ruta_propuesta"] = f"{carpeta}/{CARPETA_DICOM}/{a['subcarpeta'] + '/' if a['subcarpeta'] else ''}{a['nombre']}"
+            continue
+        base = f"{a['fecha'].replace('-', '')}_{TIPO_CORTO.get(a['tipo'], 'DOC')}"
+        usados[(carpeta, base)] += 1
+        a["ruta_propuesta"] = f"{carpeta}/{base}_{usados[(carpeta, base)]:02d}{a['ext']}"
+
+
+def construir_semilla(analisis, raiz, destino, solo_carpetas=False):
+    """Crea en destino la estructura estándar (Cartera/Cliente/Evento) y copia cada archivo con su nombre propuesto.
+    Nunca toca la carpeta original. Los duplicados no se copian; lo que no tiene cliente va a _Por identificar.
+    Se puede repetir: un archivo que ya existe con el mismo tamaño se salta. Devuelve los conteos."""
+    import csv
+    import shutil
+    raiz, destino = Path(raiz).resolve(), Path(destino).resolve()
+    if destino == raiz or raiz in destino.parents:
+        raise ValueError("el destino no puede estar dentro de la carpeta original")
+    destino.mkdir(parents=True, exist_ok=True)
+    (destino / "_Por identificar").mkdir(exist_ok=True)
+    conteo = Counter()
+    filas = []
+    for a in analisis["archivos"]:
+        if a["duplicado_de"]:
+            filas.append([a["ruta"], "", "duplicado de " + a["duplicado_de"]]); conteo["duplicados omitidos"] += 1
+            continue
+        nueva = a["ruta_propuesta"] or f"_Por identificar/{limpiar(a['nombre'], 120)}"
+        final = destino / nueva
+        final.parent.mkdir(parents=True, exist_ok=True)
+        if solo_carpetas:
+            filas.append([a["ruta"], nueva, "solo carpeta"])
+            continue
+        if final.exists() and final.stat().st_size == a["tamano"]:
+            filas.append([a["ruta"], nueva, "ya estaba"]); conteo["ya estaban"] += 1
+            continue
+        shutil.copy2(raiz / a["ruta"], final)
+        filas.append([a["ruta"], nueva, "copiado"]); conteo["copiados" if a["ruta_propuesta"] else "a _Por identificar"] += 1
+    with (destino / "_indice_semilla.csv").open("w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.writer(fh); w.writerow(["RutaOriginal", "RutaNueva", "Resultado"]); w.writerows(filas)
+    conteo["carpetas"] = sum(1 for p in destino.rglob("*") if p.is_dir())
+    return dict(conteo)
+
+
+def catalogo_semilla(analisis):
+    """Filas para la hoja Clientes: una por cliente encontrado, con su cartera."""
+    vistos = {}
+    for a in analisis["archivos"]:
+        if a["cliente"]:
+            vistos.setdefault((a["cartera"], a["cliente"]), None)
+    return [{"NombreCliente": re.sub(r"\s+", " ", c).strip(), "Cartera": k, "Correo": "", "RFC": "", "Alias": "", "Tipo": ""}
+            for k, c in sorted(vistos)]
+
+
+def _expedientes(archivos):
+    grupos = defaultdict(list)
+    for a in archivos:
+        if a["cliente"] and not a["duplicado_de"]:
+            grupos[(a["cartera"], a["cliente"], a["evento"] or SIN_EVENTO)].append(a)
+    salida = []
+    for (cartera, cliente, evento), docs in grupos.items():
+        tipos = {d["tipo"] for d in docs}
+        faltantes = [ETIQUETAS[k] for k, aceptados in REQUISITOS.items() if not tipos & set(aceptados)]
+        fechas = sorted(d["fecha"] for d in docs)
+        salida.append({"cartera": cartera, "cliente": cliente, "evento": evento, "documentos": len(docs),
+                       "inicio": fechas[0], "ultimo": fechas[-1], "tipos": sorted(tipos), "faltantes": faltantes,
+                       "dicom": sum(1 for d in docs if d["dicom"]), "por_leer": sum(1 for d in docs if d["requiere_lectura"]),
+                       "conflictos": sum(1 for d in docs if d["conflicto"])})
+    salida.sort(key=lambda e: (e["cartera"], e["cliente"], e["inicio"]))
+    return salida
+
+
+def _resumir(archivos):
+    con_cliente = [a for a in archivos if a["cliente"]]
+    clientes = {(a["cartera"], a["cliente"]) for a in con_cliente}
+    eventos = {(a["cartera"], a["cliente"], a["evento"]) for a in con_cliente if a["evento"]}
+    clientes_sin_evento = {(a["cartera"], a["cliente"]) for a in con_cliente if not a["evento"]}
+    por_cartera = defaultdict(lambda: {"clientes": set(), "eventos": set(), "archivos": 0})
+    for a in con_cliente:
+        c = por_cartera[a["cartera"]]
+        c["clientes"].add(a["cliente"])
+        c["archivos"] += 1
+        if a["evento"]:
+            c["eventos"].add((a["cliente"], a["evento"]))
+    return {
+        "archivos": len(archivos), "mb": round(sum(a["tamano"] for a in archivos) / 1048576),
+        "clientes": len(clientes), "eventos": len(eventos), "clientes_con_archivos_sueltos": len(clientes_sin_evento),
+        "fuera_de_estructura": len(archivos) - len(con_cliente),
+        "renombres_propuestos": sum(1 for a in archivos if a["ruta_propuesta"] and not a["dicom"]),
+        "dicom": sum(1 for a in archivos if a["dicom"]), "requieren_lectura": sum(1 for a in archivos if a["requiere_lectura"]),
+        "conflictos": sum(1 for a in archivos if a["conflicto"]), "duplicados": sum(1 for a in archivos if a["duplicado_de"]),
+        "fecha_por": dict(Counter(a["fecha_origen"] for a in archivos)),
+        "tipos": dict(Counter(a["tipo"] for a in archivos).most_common()),
+        "extensiones": dict(Counter(a["ext"] or "(sin)" for a in archivos).most_common(8)),
+        "carteras": [{"cartera": k, "clientes": len(v["clientes"]), "eventos": len(v["eventos"]), "archivos": v["archivos"]}
+                     for k, v in sorted(por_cartera.items())],
+    }
