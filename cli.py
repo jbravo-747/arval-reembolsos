@@ -485,7 +485,7 @@ def indexar(cfg, ruta, usuario=None, max_mb=25):
 
 
 # ---------- organizar la copia local de los expedientes de Lau y construir la semilla ----------
-def organizar(cfg, local, leer=True):
+def organizar(cfg, local, leer=True, usar_ocr=True):
     """Analiza la copia local (<Cartera>/<Cliente>/<Evento>/...) y propone la estructura estándar. No toca nada.
     Escribe trabajo/organizacion.json (detalle), organizacion_plan.csv (para que Lau revise), catalogo_semilla.csv
     y organizacion_resumen.json (lo que el panel muestra en "Lo que se hizo").
@@ -493,7 +493,7 @@ def organizar(cfg, local, leer=True):
     import csv
     from reembolsos import organizacion as org
     analisis = org.analizar(local, leer, cfg.paginas_max, cache=cfg.trabajo / "organizacion_cache.jsonl",
-                            bitacora=cfg.trabajo / "organizacion_bitacora.txt", progreso=cfg.trabajo / "organizacion_progreso.json")
+                            bitacora=cfg.trabajo / "organizacion_bitacora.txt", progreso=cfg.trabajo / "organizacion_progreso.json", usar_ocr=usar_ocr)
     _escribir_json(cfg.trabajo / "organizacion.json", {"generado": ahora().isoformat(timespec="seconds"), "raiz": str(local), **analisis})
     with (cfg.trabajo / "organizacion_plan.csv").open("w", newline="", encoding="utf-8-sig") as fh:
         w = csv.writer(fh)
@@ -599,6 +599,7 @@ def main():
     p.add_argument("--local", help="organizar/semilla: copia local de los expedientes, p. ej. D:\\Arval\\Expedientes\\SINIESTROS")
     p.add_argument("--destino", help="semilla: carpeta nueva donde se arma la estructura estándar (fuera de --local)")
     p.add_argument("--sin-leer", action="store_true", help="organizar: no abre PDF ni XML (solo nombres y carpetas)")
+    p.add_argument("--sin-ocr", action="store_true", help="organizar: no pasa OCR a escaneos ni fotos (más rápido)")
     p.add_argument("--solo-carpetas", action="store_true", help="semilla: crea las carpetas sin copiar archivos")
     a = p.parse_args()
     cfg = cargar(credenciales=a.comando not in ("organizar", "semilla"))
@@ -624,7 +625,7 @@ def main():
     elif a.comando == "organizar":
         if not a.local:
             sys.exit("uso: organizar --local <carpeta> [--sin-leer]")
-        organizar(cfg, a.local, not a.sin_leer)
+        organizar(cfg, a.local, not a.sin_leer, not a.sin_ocr)
     elif a.comando == "semilla":
         if not a.local or not a.destino:
             sys.exit("uso: semilla --local <carpeta original> --destino <carpeta nueva> [--solo-carpetas]")

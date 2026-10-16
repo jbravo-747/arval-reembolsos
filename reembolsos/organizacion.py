@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import clasificacion as cl
+from . import contenido
 from .catalogo import Catalogo, normalizar
 from .expedientes import ETIQUETAS, REQUISITOS
 
@@ -22,7 +23,9 @@ TIPO_POR_PALABRA = [("receta", "Receta"), ("informe", "Informe médico"), ("estu
                     ("identificaci", "Identificación"), ("poliza", "Operación de seguro (no reembolso)"), ("endoso", "Operación de seguro (no reembolso)")]
 TIPO_CORTO = {"CFDI factura": "CFDI", "CFDI recibo de honorarios": "CFDI-HON", "CFDI otro": "CFDI-OTRO", "Factura PDF": "FACTURA",
               "Receta": "RECETA", "Informe médico": "INFORME", "Estudio o resultado": "ESTUDIO", "Identificación": "ID",
-              "Operación de seguro (no reembolso)": "SEGURO", "Otro": "DOC"}
+              "Operación de seguro (no reembolso)": "SEGURO", "Formato de reclamación": "RECLAMACION",
+              "Comprobante de pago": "PAGO", "Otro": "DOC"}
+ANALISIS_VERSION = 2   # sube cuando cambia cómo se analiza un archivo: la caché de otra versión se vuelve a calcular
 EXT_DICOM = {".dcm"}
 SIN_EVENTO = "_Sin evento"
 CARPETA_DICOM = "Imagenes DICOM"
@@ -90,7 +93,19 @@ def _cargar_cache(ruta):
     return cache
 
 
-def _analizar_archivo(partes, p, catalogo, leer, paginas_max):
+def _texto(p, ext, paginas_max, usar_ocr):
+    """(texto, método) del archivo: capa de texto, Office o, si no hay, OCR de Windows."""
+    texto, metodo = "", ""
+    if ext == ".pdf":
+        texto, metodo = cl.texto_pdf(p, paginas_max), "texto PDF"
+    elif ext in cl.EXT_OFICINA:
+        texto, metodo = cl.texto_markitdown(p), "texto (MarkItDown)"
+    if not texto.strip() and usar_ocr and (ext == ".pdf" or ext in cl.EXT_IMAGEN):
+        texto, metodo = contenido.ocr(p, min(paginas_max, 2)), "OCR"
+    return texto, metodo if texto.strip() else ""
+
+
+def _analizar_archivo(partes, p, catalogo, leer, paginas_max, usar_ocr=True):
     st = p.stat()
     cartera = partes[0] if len(partes) >= 3 else ""
     cliente = partes[1] if len(partes) >= 3 else ""
@@ -99,43 +114,52 @@ def _analizar_archivo(partes, p, catalogo, leer, paginas_max):
     ext = p.suffix.lower()
     info = {"ruta": "/".join(partes), "nombre": p.name, "cartera": cartera, "cliente": cliente, "evento": evento,
             "subcarpeta": subruta, "ext": ext, "tamano": st.st_size, "mtime": int(st.st_mtime), "dicom": ext in EXT_DICOM,
-            "metodo": "", "cliente_contenido": None, "conflicto": False, "requiere_lectura": False, "sha1": None}
-    pre = {}
+            "metodo": "", "senal_tipo": "", "cliente_contenido": None, "conflicto": False, "requiere_lectura": False, "sha1": None,
+            "version": ANALISIS_VERSION}
+    tipo, f_doc, f_contenido = None, None, None
     if info["dicom"]:
-        info["metodo"] = "imagen DICOM: no se lee"
-    elif ext in cl.EXT_IMAGEN:
-        info["metodo"], info["requiere_lectura"] = "imagen: requiere lectura del agente", True
-    elif leer and ext not in cl.EXT_IGNORAR:
+        info["metodo"], tipo = "imagen DICOM: no se lee", "Estudio o resultado"
+    elif leer and ext == ".xml":
+        nombre, rfc, total, fecha = cl.receptor_cfdi(p)
+        info["metodo"] = "Receptor CFDI" if (nombre or rfc) else "XML sin CFDI"
+        if nombre or rfc:
+            tipo = "CFDI factura"
+            c, como = catalogo.resolver(f"{nombre} {rfc}")
+            if c and como == "exacta":
+                info["cliente_contenido"] = c
         try:
-            pre = cl.preanalisis(p, catalogo, paginas_max)
-        except Exception as e:  # noqa: BLE001  un archivo dañado no detiene el bloque
-            pre = {"metodo": f"error al leer: {type(e).__name__}"}
-        info["metodo"] = pre["metodo"]
-        info["requiere_lectura"] = pre["metodo"].startswith("escaneado")
-        if pre.get("cliente") and pre.get("confianza") == "Alta":
-            info["cliente_contenido"] = pre["cliente"]
-            info["conflicto"] = bool(cliente) and pre["cliente"] != cliente
-    if info["dicom"]:
-        tipo = "Estudio o resultado"
-    elif pre.get("metodo") == "Receptor CFDI":
-        tipo = "CFDI factura"
-    else:
-        tipo = tipo_por_nombre(p.name) or tipo_por_nombre(subruta) or tipo_por_nombre(evento) or "Otro"
-    info["tipo"] = tipo
-    f_doc = None
-    if pre.get("fecha_doc"):
-        try:
-            f_doc = datetime.fromisoformat(pre["fecha_doc"][:10]).date()
+            f_doc = datetime.fromisoformat(fecha[:10]).date() if fecha else None
         except ValueError:
             f_doc = None
+    elif leer and ext not in cl.EXT_IGNORAR:
+        try:
+            texto, metodo = _texto(p, ext, paginas_max, usar_ocr)
+        except Exception as e:  # noqa: BLE001  un archivo dañado no detiene el bloque
+            texto, metodo = "", f"error al leer: {type(e).__name__}"
+        if texto.strip():
+            info["metodo"] = metodo
+            tipo, info["senal_tipo"] = contenido.tipo_por_texto(texto)
+            f_contenido = contenido.fecha_por_texto(texto)
+            c, como = catalogo.resolver(texto)
+            if c and como == "exacta":
+                info["cliente_contenido"] = c
+        else:
+            info["metodo"] = metodo or ("sin texto: requiere lectura del agente" if ext == ".pdf" or ext in cl.EXT_IMAGEN else "formato no leído")
+            info["requiere_lectura"] = ext == ".pdf" or ext in cl.EXT_IMAGEN
+        del texto   # el contenido no sale de esta función
+    info["conflicto"] = bool(cliente and info["cliente_contenido"] and info["cliente_contenido"] != cliente)
+    if not tipo:
+        tipo = tipo_por_nombre(p.name) or tipo_por_nombre(subruta) or tipo_por_nombre(evento)
+        info["senal_tipo"] = "nombre" if tipo else ""
+    info["tipo"] = tipo or "Otro"
     f_nombre = fecha_en_nombre(p.name)
-    fecha = f_doc or f_nombre or datetime.fromtimestamp(st.st_mtime).date()
+    fecha = f_doc or f_contenido or f_nombre or datetime.fromtimestamp(st.st_mtime).date()
     info["fecha"] = str(fecha)
-    info["fecha_origen"] = "documento" if f_doc else "nombre" if f_nombre else "modificación"
+    info["fecha_origen"] = "documento" if f_doc else "contenido" if f_contenido else "nombre" if f_nombre else "modificación"
     return info
 
 
-def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None, progreso=None):
+def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None, progreso=None, usar_ocr=True):
     """Analiza la copia local y devuelve {"archivos": [...], "resumen": {...}, "expedientes": [...]}.
 
     Trabaja por bloques (un cliente a la vez). Con cache (ruta a un .jsonl) guarda cada archivo en cuanto lo analiza
@@ -176,11 +200,11 @@ def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None, progreso
                 ruta = "/".join(partes)
                 st = p.stat()
                 c = previo.get(ruta)
-                if c and c.get("tamano") == st.st_size and c.get("mtime") == int(st.st_mtime):
+                if c and c.get("tamano") == st.st_size and c.get("mtime") == int(st.st_mtime) and c.get("version") == ANALISIS_VERSION:
                     por_ruta[ruta] = c
                     avance["desde_cache"] += 1
                     continue
-                info = _analizar_archivo(partes, p, catalogo, leer, paginas_max)
+                info = _analizar_archivo(partes, p, catalogo, leer, paginas_max, usar_ocr)
                 por_ruta[ruta] = info
                 nuevos += 1
                 avance["errores_lectura"] += info["metodo"].startswith("error al leer")
