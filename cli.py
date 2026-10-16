@@ -493,7 +493,7 @@ def organizar(cfg, local, leer=True):
     import csv
     from reembolsos import organizacion as org
     analisis = org.analizar(local, leer, cfg.paginas_max, cache=cfg.trabajo / "organizacion_cache.jsonl",
-                            bitacora=cfg.trabajo / "organizacion_bitacora.txt")
+                            bitacora=cfg.trabajo / "organizacion_bitacora.txt", progreso=cfg.trabajo / "organizacion_progreso.json")
     _escribir_json(cfg.trabajo / "organizacion.json", {"generado": ahora().isoformat(timespec="seconds"), "raiz": str(local), **analisis})
     with (cfg.trabajo / "organizacion_plan.csv").open("w", newline="", encoding="utf-8-sig") as fh:
         w = csv.writer(fh)
@@ -505,6 +505,9 @@ def organizar(cfg, local, leer=True):
         filas = org.catalogo_semilla(analisis)
         w = csv.DictWriter(fh, fieldnames=["NombreCliente", "Cartera", "Correo", "RFC", "Alias", "Tipo"]); w.writeheader(); w.writerows(filas)
     _escribir_json(cfg.trabajo / "organizacion_resumen.json", _resumen_organizacion(analisis, "propuesta"))
+    progreso = _leer_json(cfg.trabajo / "organizacion_progreso.json", {})
+    _escribir_json(cfg.trabajo / "organizacion_progreso.json", {**progreso, "estado": "terminado", "etapa": "propuesta lista",
+                                                               "hora": ahora().isoformat(timespec="seconds")})
     r = analisis["resumen"]
     print(f"archivos: {r['archivos']} ({r['mb']} MB) | clientes: {r['clientes']} | eventos: {r['eventos']} | "
           f"renombres propuestos: {r['renombres_propuestos']} | DICOM: {r['dicom']} | por leer: {r['requieren_lectura']} | "

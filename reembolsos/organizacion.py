@@ -135,12 +135,13 @@ def _analizar_archivo(partes, p, catalogo, leer, paginas_max):
     return info
 
 
-def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None):
+def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None, progreso=None):
     """Analiza la copia local y devuelve {"archivos": [...], "resumen": {...}, "expedientes": [...]}.
 
     Trabaja por bloques (un cliente a la vez). Con cache (ruta a un .jsonl) guarda cada archivo en cuanto lo analiza
     y en la siguiente corrida salta lo que ya está (misma ruta, tamaño y fecha): si se corta, se retoma donde quedó.
-    bitacora (ruta a un .txt) recibe una línea con la hora por cada bloque terminado."""
+    bitacora (ruta a un .txt) recibe una línea con la hora por cada bloque terminado; progreso (ruta a un .json)
+    se reescribe en cada bloque con los conteos que el panel muestra en "Avance de la organización"."""
     raiz = Path(raiz)
     entradas = recorrer(raiz)
     clientes_carpeta = sorted({partes[1] for partes, _ in entradas if len(partes) >= 3})
@@ -158,6 +159,16 @@ def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None):
         bloques["/".join(partes[:2]) if len(partes) >= 3 else "(fuera de estructura)"].append((partes, p))
     anotar(f"inicio: {len(entradas)} archivos en {len(bloques)} bloques; {len(previo)} ya en caché")
     por_ruta = {}
+    avance = {"estado": "corriendo", "inicio": datetime.now().isoformat(timespec="seconds"), "bloques_total": len(bloques),
+              "bloques_hechos": 0, "archivos_total": len(entradas), "archivos_hechos": 0, "analizados_esta_corrida": 0,
+              "desde_cache": 0, "errores_lectura": 0, "ultimo_bloque": "", "etapa": "leyendo archivos"}
+
+    def publicar_avance(**cambios):
+        if progreso:
+            avance.update(cambios, hora=datetime.now().isoformat(timespec="seconds"))
+            Path(progreso).write_text(json.dumps(avance, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    publicar_avance()
     try:
         for n, (bloque, lista) in enumerate(sorted(bloques.items()), 1):
             nuevos = 0
@@ -167,16 +178,21 @@ def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None):
                 c = previo.get(ruta)
                 if c and c.get("tamano") == st.st_size and c.get("mtime") == int(st.st_mtime):
                     por_ruta[ruta] = c
+                    avance["desde_cache"] += 1
                     continue
                 info = _analizar_archivo(partes, p, catalogo, leer, paginas_max)
                 por_ruta[ruta] = info
                 nuevos += 1
+                avance["errores_lectura"] += info["metodo"].startswith("error al leer")
                 if fh:
                     fh.write(json.dumps(info, ensure_ascii=False) + "\n"); fh.flush()
             if nuevos:
                 anotar(f"bloque {n}/{len(bloques)}: {len(lista)} archivos, {nuevos} analizados")
+            avance["analizados_esta_corrida"] += nuevos
+            publicar_avance(bloques_hechos=n, archivos_hechos=avance["archivos_hechos"] + len(lista), ultimo_bloque=bloque.split("/")[0])
 
         # Duplicados: mismo tamaño y mismo contenido (la huella también queda en la caché)
+        publicar_avance(etapa="buscando duplicados")
         por_tamano = defaultdict(list)
         for partes, p in entradas:
             por_tamano[por_ruta["/".join(partes)]["tamano"]].append((partes, p))
@@ -190,6 +206,10 @@ def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None):
                     if fh:
                         fh.write(json.dumps(info, ensure_ascii=False) + "\n"); fh.flush()
         anotar("análisis de archivos y duplicados terminado")
+        publicar_avance(etapa="armando la propuesta")
+    except BaseException as e:
+        publicar_avance(estado="detenido", etapa=f"se detuvo: {type(e).__name__}")
+        raise
     finally:
         if fh:
             fh.close()

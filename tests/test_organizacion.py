@@ -93,3 +93,11 @@ def test_analizar_reanuda_desde_la_cache(arbol, tmp_path, monkeypatch):
     assert segundo["resumen"] == primero["resumen"]
     assert [a["ruta_propuesta"] for a in segundo["archivos"]] == [a["ruta_propuesta"] for a in primero["archivos"]]
     assert "bloque" in bitacora.read_text(encoding="utf-8")
+
+
+def test_analizar_escribe_avance(arbol, tmp_path):
+    progreso = tmp_path / "progreso.json"
+    org.analizar(arbol, progreso=progreso)
+    p = json.loads(progreso.read_text(encoding="utf-8"))
+    assert p["bloques_hechos"] == p["bloques_total"] == 3 and p["archivos_hechos"] == p["archivos_total"] == 7
+    assert p["estado"] == "corriendo" and p["etapa"] == "armando la propuesta"

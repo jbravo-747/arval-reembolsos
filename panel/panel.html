@@ -101,6 +101,10 @@ table.t td.num,table.t th.num{text-align:right}
 .barra .k{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 details.exps summary{cursor:pointer;font-weight:600}
 .exp-lista{display:flex;flex-direction:column;gap:6px;max-height:420px;overflow:auto;margin-top:8px}
+.progreso{height:14px;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden}
+.progreso > span{display:block;height:100%;background:var(--accent);transition:width .4s}
+@media (prefers-reduced-motion:reduce){.progreso > span{transition:none}}
+.etapa.corriendo{background:var(--warn-soft);color:var(--warn)} .etapa.terminado{background:var(--ok-soft);color:var(--ok)} .etapa.detenido,.etapa.error{background:var(--crit-soft);color:var(--crit)}
 .etapa{font-size:.78rem;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em;background:var(--accent-soft);color:var(--accent)}
 a{color:var(--accent)}
 </style>
@@ -126,6 +130,18 @@ a{color:var(--accent)}
     <div class="kpi"><div class="n" id="k-mov">–</div><div class="l">Movidos en la última corrida</div></div>
     <div class="kpi"><div class="n" id="k-cand">–</div><div class="l">Candidatos a cliente</div></div>
   </div>
+
+  <!-- TEMPORAL: avance de la organización de expedientes. Quitar esta sección (y pintarAvance/progreso) al terminar la migración. -->
+  <section id="secAvance">
+    <div class="sec-head"><h2>Avance de la organización</h2><span id="avEstado"></span><small class="ts" id="avHora"></small></div>
+    <div id="avCuerpo" class="vacio">Claude publica aquí el avance del análisis de los expedientes de SINIESTROS: bloques y archivos leídos, la etapa y lo que falta descargar. Se actualiza cada vez que Claude revisa la corrida.</div>
+    <div class="acciones">
+      <button class="btn" type="button" id="btnOrganizar" data-tarea="organizar">Ejecutar análisis</button>
+      <button class="btn sec" type="button" id="btnJuntar" data-tarea="juntar">Juntar zips nuevos</button>
+      <span class="muted" id="avNota">Las solicitudes las atiende Claude en su siguiente sesión.</span>
+    </div>
+    <div class="lista" id="avSolicitudes"></div>
+  </section>
 
   <section id="secHecho">
     <div class="sec-head"><h2>Lo que se hizo</h2><span id="hechoEtapa"></span><small class="ts" id="hechoHora"></small></div>
@@ -385,6 +401,8 @@ a{color:var(--accent)}
   function suscribir(){
     const err = (e) => { if (e && e.code === "revoked") $("avisoDb").hidden = false; };
     db.doc("monitor/clasificador").onSnapshot((s) => { estado.monitor.clasificador = s.exists ? s.data() : null; pintarSemaforo(); pintarKpis(); pintarHecho(); }, err);
+    db.doc("progreso/organizar").onSnapshot((s) => { estado.avance = s.exists ? s.data() : null; pintarAvance(); }, err);
+    db.collection("solicitudes").limit(100).onSnapshot((s) => { estado.solicitudes = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarAvance(); }, err);
     db.doc("organizacion/ultimo").onSnapshot((s) => { estado.organizacion = s.exists ? s.data() : null; pintarHecho(); }, err);
     db.doc("monitor/resumen").onSnapshot((s) => { estado.monitor.resumen = s.exists ? s.data() : null; pintarSemaforo(); }, err);
     db.doc("catalogo/lista").onSnapshot((s) => { estado.catalogo = s.exists ? (s.data().nombres || []) : []; pintarPendientes(); pintarSelectEntrada(); }, err);
@@ -409,6 +427,34 @@ a{color:var(--accent)}
       <div class="semaforo" style="margin-bottom:8px">${conteos}</div>
       ${abiertos ? `<ul style="margin:0;padding-left:18px;font-size:.9rem">${abiertos}</ul>` : ""}`;
   }
+
+  // TEMPORAL: avance de la organización (documento progreso/organizar que publica Claude)
+  const TAREAS = { organizar: "Ejecutar análisis", juntar: "Juntar zips nuevos" };
+  function pintarAvance(){
+    const a = estado.avance;
+    const sol = (estado.solicitudes || []).filter(s => TAREAS[s.tipo] && !s.atendida).sort((x, y) => String(y.hora).localeCompare(String(x.hora)));
+    $("avSolicitudes").innerHTML = sol.map(s => `<div class="entrada"><span>${esc(TAREAS[s.tipo])} <span class="muted">pedido ${horaCorta(s.hora)}</span></span><span class="e pendiente">en espera</span></div>`).join("");
+    if (!a) return;
+    const cont = $("avCuerpo"); cont.classList.remove("vacio");
+    $("avEstado").innerHTML = `<span class="etapa ${esc(a.estado)}">${esc(a.estado || "")}</span>`;
+    $("avHora").textContent = `publicado ${horaCorta(a.publicado || a.hora)}`;
+    const pct = a.archivos_total ? Math.round(a.archivos_hechos / a.archivos_total * 100) : 0;
+    const n = (v) => (v ?? 0).toLocaleString("es-MX");
+    const desc = (a.descarga || []).map(d => `<tr><td>${esc(d.cartera)}</td><td class="num">${n(d.locales)}</td><td>${esc(d.estado)}</td></tr>`).join("");
+    cont.innerHTML = `<div class="progreso" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Archivos leídos"><span style="width:${pct}%"></span></div>
+      <div class="m" style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.9rem"><span><b>${pct}%</b> · ${esc(a.etapa || "")}</span>
+      <span>bloques ${n(a.bloques_hechos)} de ${n(a.bloques_total)}</span><span>archivos ${n(a.archivos_hechos)} de ${n(a.archivos_total)}</span>
+      <span>leídos en esta corrida ${n(a.analizados_esta_corrida)}</span><span>ya en caché ${n(a.desde_cache)}</span>
+      ${a.errores_lectura ? `<span style="color:var(--warn)">${n(a.errores_lectura)} archivos dañados</span>` : ""}</div>
+      ${a.nota ? `<div class="muted">${esc(a.nota)}</div>` : ""}
+      ${desc ? `<div class="tabla-scroll"><table class="t"><thead><tr><th>Descarga por cartera</th><th class="num">Archivos locales</th><th>Estado</th></tr></thead><tbody>${desc}</tbody></table></div>` : ""}`;
+  }
+  document.querySelectorAll("[data-tarea]").forEach(b => b.addEventListener("click", async () => {
+    if (!db) return toast("Sin conexión a los datos");
+    if ((estado.solicitudes || []).some(s => s.tipo === b.dataset.tarea && !s.atendida)) return toast("Ya hay una solicitud en espera");
+    try { await db.collection("solicitudes").add({ tipo: b.dataset.tarea, por: estado.uid, hora: new Date().toISOString(), atendida: false }); toast("Solicitud registrada"); }
+    catch (e) { toast("No se pudo registrar la solicitud"); }
+  }));
 
   const ETAPAS = { "propuesta": "propuesta, sin mover nada", "solo carpetas": "carpetas creadas", "semilla construida": "estructura construida", "aplicado": "aplicado en OneDrive" };
   function pintarHecho(){
