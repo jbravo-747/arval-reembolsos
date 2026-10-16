@@ -14,6 +14,8 @@
                                          analiza la copia local de los expedientes de Lau y propone la estructura estándar
   python cli.py semilla --local <carpeta> --destino <carpeta nueva> [--solo-carpetas]
                                          arma la estructura estándar con copias renombradas, lista para sincronizar a OneDrive
+  python cli.py puente --entrada <Reembolsos> --destino <Arval> [--modo aplica]
+                                         lleva lo nuevo que dejó Power Automate a la estructura estándar de /Arval
   python cli.py latido <rutina> <resultado> [detalle]
   python cli.py decisiones-locales       (respaldo) OCR de Windows en lugar del agente; solo en un equipo Windows
 
@@ -528,6 +530,22 @@ def semilla(cfg, local, destino, solo_carpetas=False):
     print("semilla:", ", ".join(f"{k}: {v}" for k, v in conteo.items()), f"| índice: {Path(destino) / '_indice_semilla.csv'}")
 
 
+def puente(cfg, entrada, destino, usar_ocr=True):
+    """Lleva lo nuevo de /Reembolsos (Power Automate) a /Arval con la estructura estándar. Ver reembolsos/puente.py.
+    Aplica las confirmaciones de Lau (trabajo/confirmaciones.json) y usa el catálogo semilla para conocer la cartera.
+    Escribe trabajo/puente_panel.json (pendientes, bitácora, latido) y trabajo/puente_resumen.json (resumen del día)."""
+    import csv
+    from reembolsos import puente as pt
+    extra = []
+    if (cfg.trabajo / "catalogo_semilla.csv").exists():
+        with (cfg.trabajo / "catalogo_semilla.csv").open(encoding="utf-8-sig") as fh:
+            extra = list(csv.DictReader(fh))
+    panel = pt.correr(entrada, destino, cfg.trabajo, cfg.modo, usar_ocr, extra, _leer_json(cfg.trabajo / "confirmaciones.json", []))
+    _escribir_json(cfg.trabajo / "puente_resumen.json", pt.resumen_dia(cfg.trabajo, destino))
+    print(f"puente (modo {cfg.modo}):", ", ".join(f"{k}: {v}" for k, v in panel["conteo"].items()) or "sin archivos")
+    print(f"para el panel: {cfg.trabajo / 'puente_panel.json'} | resumen del día: {cfg.trabajo / 'puente_resumen.json'}")
+
+
 def _resumen_organizacion(analisis, etapa):
     """Documento organizacion/ultimo del panel: solo metadatos (carpetas, tipos y conteos), nunca contenido."""
     return {"hora": ahora().isoformat(timespec="seconds"), "etapa": etapa, **analisis["resumen"],
@@ -588,7 +606,7 @@ def decisiones_locales(cfg):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("comando", choices=["selftest", "pull", "apply", "resumen", "borradores", "ingresar", "indexar", "organizar", "semilla",
+    p.add_argument("comando", choices=["selftest", "pull", "apply", "resumen", "borradores", "ingresar", "indexar", "organizar", "semilla", "puente",
                                        "latido", "decisiones-locales"])
     p.add_argument("args", nargs="*")
     p.add_argument("--modo", choices=["propone", "aplica"])
@@ -597,12 +615,13 @@ def main():
     p.add_argument("--ruta", help="indexar: carpeta de OneDrive con los expedientes hechos a mano, p. ej. /Reembolsos Lau")
     p.add_argument("--usuario", help="indexar: dueño del OneDrive si no es la cuenta de servicio, p. ej. ltorres@arval.com.mx")
     p.add_argument("--local", help="organizar/semilla: copia local de los expedientes, p. ej. D:\\Arval\\Expedientes\\SINIESTROS")
-    p.add_argument("--destino", help="semilla: carpeta nueva donde se arma la estructura estándar (fuera de --local)")
+    p.add_argument("--entrada", help="puente: carpeta /Reembolsos sincronizada (Power Automate)")
+    p.add_argument("--destino", help="semilla/puente: carpeta /Arval sincronizada, o carpeta nueva donde se arma la estructura estándar (fuera de --local)")
     p.add_argument("--sin-leer", action="store_true", help="organizar: no abre PDF ni XML (solo nombres y carpetas)")
     p.add_argument("--sin-ocr", action="store_true", help="organizar: no pasa OCR a escaneos ni fotos (más rápido)")
     p.add_argument("--solo-carpetas", action="store_true", help="semilla: crea las carpetas sin copiar archivos")
     a = p.parse_args()
-    cfg = cargar(credenciales=a.comando not in ("organizar", "semilla"))
+    cfg = cargar(credenciales=a.comando not in ("organizar", "semilla", "puente"))
     if a.modo:
         cfg = cfg.__class__(**{**cfg.__dict__, "modo": a.modo})
     cfg.trabajo.mkdir(parents=True, exist_ok=True)
@@ -630,6 +649,10 @@ def main():
         if not a.local or not a.destino:
             sys.exit("uso: semilla --local <carpeta original> --destino <carpeta nueva> [--solo-carpetas]")
         semilla(cfg, a.local, a.destino, a.solo_carpetas)
+    elif a.comando == "puente":
+        if not a.entrada or not a.destino:
+            sys.exit("uso: puente --entrada <Reembolsos sincronizado> --destino <Arval sincronizado> [--modo aplica] [--sin-ocr]")
+        puente(cfg, a.entrada, a.destino, not a.sin_ocr)
     elif a.comando == "latido":
         if len(a.args) < 2:
             sys.exit("uso: latido <rutina> <resultado> [detalle]")
