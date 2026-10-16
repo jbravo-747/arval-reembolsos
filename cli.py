@@ -488,10 +488,12 @@ def indexar(cfg, ruta, usuario=None, max_mb=25):
 def organizar(cfg, local, leer=True):
     """Analiza la copia local (<Cartera>/<Cliente>/<Evento>/...) y propone la estructura estándar. No toca nada.
     Escribe trabajo/organizacion.json (detalle), organizacion_plan.csv (para que Lau revise), catalogo_semilla.csv
-    y organizacion_resumen.json (lo que el panel muestra en "Lo que se hizo")."""
+    y organizacion_resumen.json (lo que el panel muestra en "Lo que se hizo").
+    Es reanudable: lo ya analizado queda en trabajo/organizacion_cache.jsonl y el avance en organizacion_bitacora.txt."""
     import csv
     from reembolsos import organizacion as org
-    analisis = org.analizar(local, leer, cfg.paginas_max)
+    analisis = org.analizar(local, leer, cfg.paginas_max, cache=cfg.trabajo / "organizacion_cache.jsonl",
+                            bitacora=cfg.trabajo / "organizacion_bitacora.txt")
     _escribir_json(cfg.trabajo / "organizacion.json", {"generado": ahora().isoformat(timespec="seconds"), "raiz": str(local), **analisis})
     with (cfg.trabajo / "organizacion_plan.csv").open("w", newline="", encoding="utf-8-sig") as fh:
         w = csv.writer(fh)

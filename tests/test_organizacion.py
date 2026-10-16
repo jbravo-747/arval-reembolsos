@@ -81,3 +81,15 @@ def test_cli_organizar_y_semilla_sin_credenciales(arbol, tmp_path, monkeypatch):
     assert resumen["etapa"] == "solo carpetas" and (tmp_path / "Estandar" / "CARTERA UNO" / "CARLOS RUIZ SOTO" / "_Sin evento").is_dir()
     assert not any(p.is_file() for p in (tmp_path / "Estandar" / "CARTERA UNO").rglob("*"))
     assert os.environ.get("M365_CLIENT_ID") is None
+
+
+def test_analizar_reanuda_desde_la_cache(arbol, tmp_path, monkeypatch):
+    cache, bitacora = tmp_path / "cache.jsonl", tmp_path / "bitacora.txt"
+    primero = org.analizar(arbol, cache=cache, bitacora=bitacora)
+    with cache.open("a", encoding="utf-8") as fh:
+        fh.write('{"ruta": "cortada por una interrupc')          # última línea incompleta
+    monkeypatch.setattr(org.cl, "preanalisis", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no debía releer")))
+    segundo = org.analizar(arbol, cache=cache, bitacora=bitacora)
+    assert segundo["resumen"] == primero["resumen"]
+    assert [a["ruta_propuesta"] for a in segundo["archivos"]] == [a["ruta_propuesta"] for a in primero["archivos"]]
+    assert "bloque" in bitacora.read_text(encoding="utf-8")

@@ -7,6 +7,7 @@ Para cada archivo deduce cartera, cliente, evento, tipo de documento y fecha, y 
 No mueve ni renombra nada: escribe un plan para que Lau lo revise y un resumen para el panel (solo metadatos).
 """
 import hashlib
+import json
 import re
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -76,71 +77,132 @@ def recorrer(raiz):
     return [(p.relative_to(raiz).parts, p) for p in sorted(raiz.rglob("*")) if p.is_file()]
 
 
-def analizar(raiz, leer=True, paginas_max=3):
-    """Analiza la copia local y devuelve {"archivos": [...], "resumen": {...}, "expedientes": [...]}."""
+def _cargar_cache(ruta):
+    """Caché JSONL: una línea por archivo ya analizado (la última línea de cada ruta gana)."""
+    cache = {}
+    if ruta and Path(ruta).exists():
+        for linea in Path(ruta).read_text(encoding="utf-8").splitlines():
+            try:
+                d = json.loads(linea)
+                cache[d["ruta"]] = d
+            except (ValueError, KeyError):
+                continue   # una línea cortada por una interrupción se descarta
+    return cache
+
+
+def _analizar_archivo(partes, p, catalogo, leer, paginas_max):
+    st = p.stat()
+    cartera = partes[0] if len(partes) >= 3 else ""
+    cliente = partes[1] if len(partes) >= 3 else ""
+    evento = partes[2] if len(partes) >= 4 else ""
+    subruta = "/".join(partes[3:-1]) if len(partes) >= 5 else ""
+    ext = p.suffix.lower()
+    info = {"ruta": "/".join(partes), "nombre": p.name, "cartera": cartera, "cliente": cliente, "evento": evento,
+            "subcarpeta": subruta, "ext": ext, "tamano": st.st_size, "mtime": int(st.st_mtime), "dicom": ext in EXT_DICOM,
+            "metodo": "", "cliente_contenido": None, "conflicto": False, "requiere_lectura": False, "sha1": None}
+    pre = {}
+    if info["dicom"]:
+        info["metodo"] = "imagen DICOM: no se lee"
+    elif ext in cl.EXT_IMAGEN:
+        info["metodo"], info["requiere_lectura"] = "imagen: requiere lectura del agente", True
+    elif leer and ext not in cl.EXT_IGNORAR:
+        try:
+            pre = cl.preanalisis(p, catalogo, paginas_max)
+        except Exception as e:  # noqa: BLE001  un archivo dañado no detiene el bloque
+            pre = {"metodo": f"error al leer: {type(e).__name__}"}
+        info["metodo"] = pre["metodo"]
+        info["requiere_lectura"] = pre["metodo"].startswith("escaneado")
+        if pre.get("cliente") and pre.get("confianza") == "Alta":
+            info["cliente_contenido"] = pre["cliente"]
+            info["conflicto"] = bool(cliente) and pre["cliente"] != cliente
+    if info["dicom"]:
+        tipo = "Estudio o resultado"
+    elif pre.get("metodo") == "Receptor CFDI":
+        tipo = "CFDI factura"
+    else:
+        tipo = tipo_por_nombre(p.name) or tipo_por_nombre(subruta) or tipo_por_nombre(evento) or "Otro"
+    info["tipo"] = tipo
+    f_doc = None
+    if pre.get("fecha_doc"):
+        try:
+            f_doc = datetime.fromisoformat(pre["fecha_doc"][:10]).date()
+        except ValueError:
+            f_doc = None
+    f_nombre = fecha_en_nombre(p.name)
+    fecha = f_doc or f_nombre or datetime.fromtimestamp(st.st_mtime).date()
+    info["fecha"] = str(fecha)
+    info["fecha_origen"] = "documento" if f_doc else "nombre" if f_nombre else "modificación"
+    return info
+
+
+def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None):
+    """Analiza la copia local y devuelve {"archivos": [...], "resumen": {...}, "expedientes": [...]}.
+
+    Trabaja por bloques (un cliente a la vez). Con cache (ruta a un .jsonl) guarda cada archivo en cuanto lo analiza
+    y en la siguiente corrida salta lo que ya está (misma ruta, tamaño y fecha): si se corta, se retoma donde quedó.
+    bitacora (ruta a un .txt) recibe una línea con la hora por cada bloque terminado."""
     raiz = Path(raiz)
     entradas = recorrer(raiz)
     clientes_carpeta = sorted({partes[1] for partes, _ in entradas if len(partes) >= 3})
     catalogo = Catalogo([{"NombreCliente": c} for c in clientes_carpeta])
+    previo = _cargar_cache(cache)
+    fh = open(cache, "a", encoding="utf-8") if cache else None
 
-    # Duplicados: mismo tamaño y mismo contenido
-    por_tamano = defaultdict(list)
-    for _, p in entradas:
-        por_tamano[p.stat().st_size].append(p)
-    huella = {}
-    for grupo in por_tamano.values():
-        if len(grupo) > 1:
-            for p in grupo:
-                huella[p] = _sha1(p)
-    primero = {}
+    def anotar(texto):
+        if bitacora:
+            with open(bitacora, "a", encoding="utf-8") as b:
+                b.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} | {texto}\n")
 
-    archivos = []
+    bloques = defaultdict(list)
     for partes, p in entradas:
-        cartera = partes[0] if len(partes) >= 3 else ""
-        cliente = partes[1] if len(partes) >= 3 else ""
-        evento = partes[2] if len(partes) >= 4 else ""
-        subruta = "/".join(partes[3:-1]) if len(partes) >= 5 else ""
-        ext = p.suffix.lower()
-        info = {"ruta": "/".join(partes), "nombre": p.name, "cartera": cartera, "cliente": cliente, "evento": evento,
-                "subcarpeta": subruta, "ext": ext, "tamano": p.stat().st_size, "dicom": ext in EXT_DICOM,
-                "metodo": "", "cliente_contenido": None, "conflicto": False, "requiere_lectura": False, "duplicado_de": None}
-        pre = {}
-        if info["dicom"]:
-            info["metodo"] = "imagen DICOM: no se lee"
-        elif ext in cl.EXT_IMAGEN:
-            info["metodo"], info["requiere_lectura"] = "imagen: requiere lectura del agente", True
-        elif leer and ext not in cl.EXT_IGNORAR:
-            pre = cl.preanalisis(p, catalogo, paginas_max)
-            info["metodo"] = pre["metodo"]
-            info["requiere_lectura"] = pre["metodo"].startswith("escaneado")
-            if pre.get("cliente") and pre.get("confianza") == "Alta":
-                info["cliente_contenido"] = pre["cliente"]
-                info["conflicto"] = bool(cliente) and pre["cliente"] != cliente
-        if info["dicom"]:
-            tipo = "Estudio o resultado"
-        elif pre.get("metodo") == "Receptor CFDI":
-            tipo = "CFDI factura"
-        else:
-            tipo = tipo_por_nombre(p.name) or tipo_por_nombre(subruta) or tipo_por_nombre(evento) or "Otro"
-        info["tipo"] = tipo
+        bloques["/".join(partes[:2]) if len(partes) >= 3 else "(fuera de estructura)"].append((partes, p))
+    anotar(f"inicio: {len(entradas)} archivos en {len(bloques)} bloques; {len(previo)} ya en caché")
+    por_ruta = {}
+    try:
+        for n, (bloque, lista) in enumerate(sorted(bloques.items()), 1):
+            nuevos = 0
+            for partes, p in lista:
+                ruta = "/".join(partes)
+                st = p.stat()
+                c = previo.get(ruta)
+                if c and c.get("tamano") == st.st_size and c.get("mtime") == int(st.st_mtime):
+                    por_ruta[ruta] = c
+                    continue
+                info = _analizar_archivo(partes, p, catalogo, leer, paginas_max)
+                por_ruta[ruta] = info
+                nuevos += 1
+                if fh:
+                    fh.write(json.dumps(info, ensure_ascii=False) + "\n"); fh.flush()
+            if nuevos:
+                anotar(f"bloque {n}/{len(bloques)}: {len(lista)} archivos, {nuevos} analizados")
 
-        f_doc = None
-        if pre.get("fecha_doc"):
-            try:
-                f_doc = datetime.fromisoformat(pre["fecha_doc"][:10]).date()
-            except ValueError:
-                f_doc = None
-        f_nombre = fecha_en_nombre(p.name)
-        fecha = f_doc or f_nombre or datetime.fromtimestamp(p.stat().st_mtime).date()
-        info["fecha"] = str(fecha)
-        info["fecha_origen"] = "documento" if f_doc else "nombre" if f_nombre else "modificación"
+        # Duplicados: mismo tamaño y mismo contenido (la huella también queda en la caché)
+        por_tamano = defaultdict(list)
+        for partes, p in entradas:
+            por_tamano[por_ruta["/".join(partes)]["tamano"]].append((partes, p))
+        for grupo in por_tamano.values():
+            if len(grupo) < 2:
+                continue
+            for partes, p in grupo:
+                info = por_ruta["/".join(partes)]
+                if not info.get("sha1"):
+                    info["sha1"] = _sha1(p)
+                    if fh:
+                        fh.write(json.dumps(info, ensure_ascii=False) + "\n"); fh.flush()
+        anotar("análisis de archivos y duplicados terminado")
+    finally:
+        if fh:
+            fh.close()
 
-        if p in huella:
-            clave = huella[p]
-            if clave in primero:
-                info["duplicado_de"] = primero[clave]
+    archivos, primero = [], {}
+    for partes, _ in entradas:
+        info = dict(por_ruta["/".join(partes)])
+        info["duplicado_de"] = None
+        if info.get("sha1"):
+            if info["sha1"] in primero:
+                info["duplicado_de"] = primero[info["sha1"]]
             else:
-                primero[clave] = info["ruta"]
+                primero[info["sha1"]] = info["ruta"]
         archivos.append(info)
 
     _proponer(archivos)
