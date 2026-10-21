@@ -33,6 +33,31 @@ def _top(contador, n=5):
     return " | ".join(f"{k} ({v})" for k, v in contador.most_common(n))
 
 
+def clasificar_conflictos(archivos, min_carpetas=5):
+    """Cuando el contenido nombra a otro cliente: {(cartera, cliente, otro): (categoría, documentos)}.
+    contratante o agente = nombre de empresa o que aparece en muchas carpetas; genérico = menos de 3 palabras;
+    familiar o titular = otro cliente persona física que aparece varias veces; posible error = casos aislados."""
+    carpetas_por_otro = defaultdict(set)
+    pares = Counter()
+    for a in archivos:
+        if a.get("conflicto") and a.get("cliente_contenido") and not a.get("duplicado_de"):
+            carpetas_por_otro[a["cliente_contenido"]].add((a["cartera"], a["cliente"]))
+            pares[(a["cartera"], a["cliente"], a["cliente_contenido"])] += 1
+    salida = {}
+    for (cartera, cliente, otro), n in pares.items():
+        palabras = set(normalizar(otro).split())
+        if len(carpetas_por_otro[otro]) >= min_carpetas or palabras & EMPRESA:
+            cat = "contratante o agente"
+        elif len(palabras) < 3:
+            cat = "genérico"
+        elif n >= 3:
+            cat = "familiar o titular"
+        else:
+            cat = "posible error"
+        salida[(cartera, cliente, otro)] = (cat, n)
+    return salida
+
+
 def construir(archivos, expedientes):
     """archivos y expedientes de organizar (organizacion.json). Devuelve dict de hojas: asegurados, personas, polizas,
     expedientes, revisar (listas de dicts)."""
@@ -42,6 +67,14 @@ def construir(archivos, expedientes):
             por_cliente[(a["cartera"], a["cliente"])].append(a)
 
     asegurados, personas, polizas, revisar = [], [], [], []
+    conflictos = clasificar_conflictos(archivos)
+    for (cartera, cliente, otro), (cat, n) in sorted(conflictos.items()):
+        if cat == "familiar o titular":
+            personas.append({"Cartera": cartera, "Cliente": cliente, "Persona": otro,
+                             "Relación probable": "Otro cliente: posible familiar o titular", "Documentos": n})
+        elif cat == "posible error":
+            revisar.append({"Cartera": cartera, "Cliente": cliente, "Qué revisar": "documento que menciona a otro cliente",
+                            "Detalle": f"{otro}: {n} documento(s)"})
     for (cartera, cliente), docs in sorted(por_cliente.items()):
         tipo = tipo_persona(cliente)
         rfcs, rfcs_receptor, aseguradoras, pol, correos, gente = Counter(), Counter(), Counter(), Counter(), Counter(), Counter()
@@ -110,6 +143,8 @@ def construir(archivos, expedientes):
             "Aseguradoras": _top(aseguradoras, 3), "Pólizas": " | ".join(p for p, n in pol.most_common(3) if n >= 2),
             "Correos encontrados": " | ".join(c for c, _ in correos.most_common(3)),
             "Titular es el cliente": "sí" if titular_es_cliente else "no se encontró",
+            "Contratante o agente": " | ".join(f"{o} ({n})" for (c1, c2, o), (cat, n) in sorted(conflictos.items(), key=lambda x: -x[1][1])
+                                               if (c1, c2) == (cartera, cliente) and cat == "contratante o agente")[:120],
             "Personas relacionadas": sum(1 for p in personas if p["Cliente"] == cliente and p["Cartera"] == cartera),
             "Expedientes": len(eventos), "Con faltantes": sum(1 for e in eventos if e["faltantes"]),
             "Documentos": len(docs), "Primer documento": fechas[0] if fechas else "", "Último documento": fechas[-1] if fechas else "",
@@ -139,9 +174,6 @@ def construir(archivos, expedientes):
                           "Aseguradora": aseg.most_common(1)[0][0] if aseg else "", "Siniestro(s)": " | ".join(s for s, _ in sin.most_common(3)),
                           "Póliza(s)": " | ".join(p for p, _ in pol.most_common(2)), "Total CFDI": round(total, 2) if total else "",
                           "Por leer": e.get("por_leer", 0), "Conflictos": e.get("conflictos", 0)})
-        if e.get("conflictos"):
-            revisar.append({"Cartera": e["cartera"], "Cliente": e["cliente"], "Qué revisar": "documentos que parecen de otro cliente",
-                            "Detalle": f"{e['evento']}: {e['conflictos']} documento(s)"})
     return {"asegurados": asegurados, "personas": personas, "polizas": polizas, "expedientes": filas_exp, "revisar": revisar}
 
 

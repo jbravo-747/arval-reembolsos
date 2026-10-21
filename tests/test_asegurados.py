@@ -41,3 +41,19 @@ def test_excel(tmp_path):
     wb = openpyxl.load_workbook(tmp_path / "b.xlsx")
     assert wb.sheetnames == ["Asegurados", "Personas", "Polizas", "Expedientes", "Revisar"]
     assert "tblAsegurados" in wb["Asegurados"].tables
+
+
+def test_conflictos_se_clasifican():
+    base = {"cartera": "C", "evento": "", "tipo": "Otro", "fecha": "2026-01-01", "fecha_origen": "contenido", "duplicado_de": None, "datos": {},
+            "conflicto": True}
+    docs = [{**base, "cliente": f"EMPLEADO NUMERO {i}", "cliente_contenido": "SAYER LACK"} for i in range(5)]
+    docs += [{**base, "cliente": "ANA MARIA PEREZ LOPEZ", "cliente_contenido": "JUAN PEREZ LOPEZ"} for _ in range(3)]
+    docs += [{**base, "cliente": "LUIS SOTO RUIZ", "cliente_contenido": "PEDRO DIAZ MORA"}]
+    docs += [{**base, "cliente": "LUIS SOTO RUIZ", "cliente_contenido": "MIGUEL ANGEL"}]
+    c = ag.clasificar_conflictos(docs)
+    assert c[("C", "EMPLEADO NUMERO 0", "SAYER LACK")][0] == "contratante o agente"
+    assert c[("C", "ANA MARIA PEREZ LOPEZ", "JUAN PEREZ LOPEZ")] == ("familiar o titular", 3)
+    assert c[("C", "LUIS SOTO RUIZ", "PEDRO DIAZ MORA")][0] == "posible error"
+    assert c[("C", "LUIS SOTO RUIZ", "MIGUEL ANGEL")][0] == "genérico"
+    h = ag.construir(docs, [])
+    assert any(p["Persona"] == "JUAN PEREZ LOPEZ" for p in h["personas"]) and any("PEDRO DIAZ MORA" in r["Detalle"] for r in h["revisar"])
