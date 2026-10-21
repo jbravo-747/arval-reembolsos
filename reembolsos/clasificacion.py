@@ -11,7 +11,7 @@ from .catalogo import candidatos_en_texto
 
 TIPOS_DOCUMENTO = ["CFDI factura", "CFDI recibo de honorarios", "CFDI otro", "Factura PDF", "Receta",
                    "Informe médico", "Estudio o resultado", "Identificación", "Operación de seguro (no reembolso)",
-                   "Formato de reclamación", "Comprobante de pago", "Correo sin documentos", "Otro"]
+                   "Formato de reclamación", "Comprobante de pago", "Finiquito o dictamen", "Correo sin documentos", "Otro"]
 CONFIANZAS = ["Alta", "Media", "Baja", "Ninguna"]
 EXT_IMAGEN = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
 EXT_IGNORAR = {".htm", ".html", ".ini", ".ics", ".vcf"}

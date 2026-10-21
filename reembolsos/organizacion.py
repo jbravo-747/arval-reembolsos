@@ -24,7 +24,7 @@ TIPO_POR_PALABRA = [("receta", "Receta"), ("informe", "Informe médico"), ("estu
 TIPO_CORTO = {"CFDI factura": "CFDI", "CFDI recibo de honorarios": "CFDI-HON", "CFDI otro": "CFDI-OTRO", "Factura PDF": "FACTURA",
               "Receta": "RECETA", "Informe médico": "INFORME", "Estudio o resultado": "ESTUDIO", "Identificación": "ID",
               "Operación de seguro (no reembolso)": "SEGURO", "Formato de reclamación": "RECLAMACION",
-              "Comprobante de pago": "PAGO", "Otro": "DOC"}
+              "Comprobante de pago": "PAGO", "Finiquito o dictamen": "FINIQUITO", "Otro": "DOC"}
 ANALISIS_VERSION = 3   # sube cuando cambia cómo se analiza un archivo: la caché de otra versión se vuelve a calcular
 EXT_DICOM = {".dcm"}
 SIN_EVENTO = "_Sin evento"
@@ -243,6 +243,7 @@ def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None, progreso
     archivos, primero = [], {}
     for partes, _ in entradas:
         info = dict(por_ruta["/".join(partes)])
+        info["tipo"] = contenido.tipo_vigente(info["tipo"], info.get("senal_tipo"))
         info["duplicado_de"] = None
         if info.get("sha1"):
             if info["sha1"] in primero:

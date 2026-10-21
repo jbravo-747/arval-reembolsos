@@ -28,9 +28,21 @@ REGLAS = [
      ["REEMBOLSO", "RECLAMACION", "NUMERO DE SINIESTRO", "ASEGURADO TITULAR", "FIRMA DEL ASEGURADO"]),
     ("Comprobante de pago", ["COMPROBANTE DE PAGO", "COMPROBANTE DE TRANSFERENCIA", "SPEI", "VOUCHER"],
      ["TRANSFERENCIA", "CLAVE DE RASTREO", "AUTORIZACION", "TARJETA", "PAGO"]),
-    ("Operación de seguro (no reembolso)", ["CARATULA DE POLIZA", "ENDOSO", "FINIQUITO", "CONDICIONES GENERALES", "CARTA DE PAGO",
-                                            "RENOVACION DE POLIZA", "DICTAMEN"], ["POLIZA", "PRIMA", "VIGENCIA", "SUMA ASEGURADA", "DEDUCIBLE"]),
+    ("Finiquito o dictamen", ["CARTA FINIQUITO", "FINIQUITO", "DICTAMEN", "CARTA DE PAGO"],
+     ["IMPORTE PAGADO", "COASEGURO", "PROCEDENTE", "IMPROCEDENTE", "MONTO RECLAMADO"]),
+    ("Operación de seguro (no reembolso)", ["CARATULA DE POLIZA", "ENDOSO", "CONDICIONES GENERALES", "RENOVACION DE POLIZA"],
+     ["POLIZA", "PRIMA", "VIGENCIA", "SUMA ASEGURADA", "DEDUCIBLE"]),
 ]
+# Señal -> tipo según las reglas vigentes: permite reclasificar lo ya analizado sin releerlo cuando una regla cambia
+TIPO_POR_SENAL = {}
+for _tipo, _fuertes, _debiles in REGLAS:
+    for _s in _fuertes + _debiles:
+        TIPO_POR_SENAL.setdefault(_s, _tipo)
+
+
+def tipo_vigente(tipo, senal):
+    """Tipo según las reglas actuales para un archivo ya analizado (si la señal vino del contenido)."""
+    return TIPO_POR_SENAL.get(senal, tipo) if senal and senal not in ("nombre", "Receptor CFDI") else tipo
 MINIMO = 3
 MESES = {"ENERO": 1, "ENE": 1, "FEBRERO": 2, "FEB": 2, "MARZO": 3, "MAR": 3, "ABRIL": 4, "ABR": 4, "MAYO": 5, "MAY": 5, "JUNIO": 6, "JUN": 6,
          "JULIO": 7, "JUL": 7, "AGOSTO": 8, "AGO": 8, "SEPTIEMBRE": 9, "SETIEMBRE": 9, "SEPT": 9, "SEP": 9, "OCTUBRE": 10, "OCT": 10,

@@ -33,3 +33,10 @@ def test_identificadores_y_prefijos_rfc():
     assert d["aseguradora"] == "GNP" and ["titular", "JUAN PEREZ LOPEZ"] in d["personas"] and ["afectado", "MARIA PEREZ GARCIA"] in d["personas"]
     assert d["correos"] == ["juan.perez@ejemplo.com"]
     assert "PELJ" in prefijos_rfc("JUAN PEREZ LOPEZ") and "PELJ" in prefijos_rfc("PEREZ LOPEZ JUAN")
+
+
+def test_finiquito_y_reclasificacion_por_senal():
+    from reembolsos.contenido import tipo_vigente
+    assert tipo_por_texto("CARTA FINIQUITO  Importe pagado  Coaseguro")[0] == "Finiquito o dictamen"
+    assert tipo_vigente("Operación de seguro (no reembolso)", "FINIQUITO") == "Finiquito o dictamen"
+    assert tipo_vigente("Receta", "nombre") == "Receta"

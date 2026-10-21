@@ -135,6 +135,7 @@ def construir(archivos, expedientes):
                 pass
         filas_exp.append({"Cartera": e["cartera"], "Cliente": e["cliente"], "Evento": e["evento"], "Inicio": e["inicio"], "Último": e["ultimo"],
                           "Documentos": e["documentos"], "Tipos": ", ".join(e["tipos"]), "Faltantes": ", ".join(e["faltantes"]),
+                          "Resuelto por la aseguradora": "sí (finiquito o dictamen)" if "Finiquito o dictamen" in e["tipos"] else "",
                           "Aseguradora": aseg.most_common(1)[0][0] if aseg else "", "Siniestro(s)": " | ".join(s for s, _ in sin.most_common(3)),
                           "Póliza(s)": " | ".join(p for p, _ in pol.most_common(2)), "Total CFDI": round(total, 2) if total else "",
                           "Por leer": e.get("por_leer", 0), "Conflictos": e.get("conflictos", 0)})
