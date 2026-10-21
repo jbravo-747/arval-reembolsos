@@ -224,4 +224,9 @@ def prefijos_rfc(nombre):
     def armar(paterno, materno, nombre1):
         vocal = next((c for c in paterno[1:] if c in _VOCALES), "X")
         return paterno[0] + vocal + materno[0] + nombre1[0]
-    return {armar(w[-2], w[-1], w[0]), armar(w[0], w[1], w[2])}
+    salida = {armar(w[-2], w[-1], w[0]), armar(w[0], w[1], w[2])}
+    if len(w) >= 4 and w[0] in ("MARIA", "MA", "JOSE", "J"):      # regla del SAT: en nombre compuesto se omite MARÍA o JOSÉ
+        salida.add(armar(w[-2], w[-1], w[1]))
+    if len(w) >= 4 and w[2] in ("MARIA", "MA", "JOSE", "J"):      # apellidos primero: PEREZ LOPEZ MARIA ELENA
+        salida.add(armar(w[0], w[1], w[3]))
+    return salida

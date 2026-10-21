@@ -25,7 +25,7 @@ def test_construye_asegurados_personas_polizas_y_expedientes():
     juan = [a for a in h["asegurados"] if a["Cliente"] == "JUAN PEREZ LOPEZ"][0]
     assert juan["Tipo"] == "Persona física" and juan["RFC"] == "PELJ800101AB1" and juan["Confianza RFC"].startswith("alta")
     assert juan["Aseguradora principal"] == "GNP" and juan["Pólizas"] == "12345678" and juan["Titular es el cliente"] == "sí"
-    assert juan["Correos encontrados"] == "juan@ejemplo.com" and juan["Expedientes"] == 1 and juan["Con faltantes"] == 1
+    assert juan["Correo probable"] == "juan@ejemplo.com" and juan["Otros correos en sus documentos"] == "" and juan["Expedientes"] == 1 and juan["Con faltantes"] == 1
     assert [p["Persona"] for p in h["personas"]] == ["MARIA PEREZ GARCIA"]
     assert h["polizas"][0]["Aseguradora"] == "GNP"
     exp = h["expedientes"][0]
@@ -57,3 +57,8 @@ def test_conflictos_se_clasifican():
     assert c[("C", "LUIS SOTO RUIZ", "MIGUEL ANGEL")][0] == "genérico"
     h = ag.construir(docs, [])
     assert any(p["Persona"] == "JUAN PEREZ LOPEZ" for p in h["personas"]) and any("PEDRO DIAZ MORA" in r["Detalle"] for r in h["revisar"])
+
+
+def test_correo_del_cliente():
+    assert ag.correo_del_cliente("hilda.reyna80@gmail.com", "HILDA REYNA INES ROLDAN")
+    assert not ag.correo_del_cliente("contacto@laboratorio.com", "HILDA REYNA INES ROLDAN")

@@ -29,6 +29,26 @@ def _mismo_nombre(a, b):
     return bool(corto) and len(corto) >= 2 and corto <= largo
 
 
+DOMINIOS_INSTITUCIONALES = ("gnp.", "arval.", "mapfre.", "axa.", "metlife.", "segurosatlas.", "atlas.", "allianz.", "bupa.", "inbursa.",
+                            "banorte.", "zurich.", "hdi.", "chubb.", "qualitas.", "sura.", "mnyl.", "planseguro.", "gs.com")
+
+
+def _comunes(archivos, campo, minimo=3):
+    """Valores (correos o nombres) que aparecen en documentos de `minimo` o más clientes: institucionales o médicos."""
+    clientes = defaultdict(set)
+    for a in archivos:
+        if a.get("cliente") and not a.get("duplicado_de"):
+            datos = a.get("datos") or {}
+            for v in datos.get(campo, []):
+                clientes[v if campo == "correos" else v[1]].add(a["cliente"])
+    return {v for v, cs in clientes.items() if len(cs) >= minimo}
+
+
+def correo_del_cliente(correo, cliente):
+    usuario = re.sub(r"[^a-z]", " ", correo.split("@")[0].lower())
+    return any(len(w) >= 4 and w.lower() in usuario for w in normalizar(cliente).split())
+
+
 def _top(contador, n=5):
     return " | ".join(f"{k} ({v})" for k, v in contador.most_common(n))
 
@@ -68,6 +88,7 @@ def construir(archivos, expedientes):
 
     asegurados, personas, polizas, revisar = [], [], [], []
     conflictos = clasificar_conflictos(archivos)
+    correos_comunes, personas_comunes = _comunes(archivos, "correos"), _comunes(archivos, "personas")
     for (cartera, cliente, otro), (cat, n) in sorted(conflictos.items()):
         if cat == "familiar o titular":
             personas.append({"Cartera": cartera, "Cliente": cliente, "Persona": otro,
@@ -95,9 +116,11 @@ def construir(archivos, expedientes):
                 if datos.get("aseguradora"):
                     pol_aseg[p][datos["aseguradora"]] += 1
             for c in datos.get("correos", []):
-                correos[c] += 1
+                if c not in correos_comunes and not any(dom in c.split("@")[-1] for dom in DOMINIOS_INSTITUCIONALES):
+                    correos[c] += 1
             for rol, nombre in datos.get("personas", []):
-                gente[(rol, nombre)] += 1
+                if nombre not in personas_comunes:
+                    gente[(rol, nombre)] += 1
 
         # RFC del asegurado
         rfc, rfc_conf = "", ""
@@ -106,6 +129,11 @@ def construir(archivos, expedientes):
             validos = Counter({r: n + rfcs_receptor.get(r, 0) for r, n in (rfcs + rfcs_receptor).items() if len(r) == 13 and r[:4] in prefijos})
             if validos:
                 rfc, rfc_conf = validos.most_common(1)[0][0], "alta (coincide con el nombre)"
+            else:
+                casi = Counter({r: n for r, n in (rfcs + rfcs_receptor).items()
+                                if len(r) == 13 and n >= 2 and any(sum(x == y for x, y in zip(r[:4], pf)) >= 3 for pf in prefijos)})
+                if casi:
+                    rfc, rfc_conf = casi.most_common(1)[0][0], "media (coincide en 3 de 4 letras: revisar)"
         if not rfc and rfcs_receptor:
             r, n = rfcs_receptor.most_common(1)[0]
             if n >= 5:
@@ -141,7 +169,8 @@ def construir(archivos, expedientes):
             "Cartera": cartera, "Cliente": cliente, "Tipo": tipo, "RFC": rfc, "Confianza RFC": rfc_conf,
             "Aseguradora principal": aseguradoras.most_common(1)[0][0] if aseguradoras else "",
             "Aseguradoras": _top(aseguradoras, 3), "Pólizas": " | ".join(p for p, n in pol.most_common(3) if n >= 2),
-            "Correos encontrados": " | ".join(c for c, _ in correos.most_common(3)),
+            "Correo probable": " | ".join(c for c, _ in correos.most_common() if correo_del_cliente(c, cliente))[:120],
+            "Otros correos en sus documentos": " | ".join(c for c, _ in correos.most_common(3) if not correo_del_cliente(c, cliente)),
             "Titular es el cliente": "sí" if titular_es_cliente else "no se encontró",
             "Contratante o agente": " | ".join(f"{o} ({n})" for (c1, c2, o), (cat, n) in sorted(conflictos.items(), key=lambda x: -x[1][1])
                                                if (c1, c2) == (cartera, cliente) and cat == "contratante o agente")[:120],
@@ -182,7 +211,7 @@ def resumen(hojas):
     return {"asegurados": len(a), "personas_fisicas": sum(1 for x in a if x["Tipo"] == "Persona física"),
             "con_rfc": sum(1 for x in a if x["RFC"]), "rfc_alta": sum(1 for x in a if x["Confianza RFC"].startswith("alta")),
             "con_aseguradora": sum(1 for x in a if x["Aseguradora principal"]), "con_poliza": sum(1 for x in a if x["Pólizas"]),
-            "con_correo": sum(1 for x in a if x["Correos encontrados"]), "personas_relacionadas": len(hojas["personas"]),
+            "con_correo": sum(1 for x in a if x["Correo probable"]), "personas_relacionadas": len(hojas["personas"]),
             "polizas": len(hojas["polizas"]), "expedientes": len(hojas["expedientes"]), "por_revisar": len(hojas["revisar"]),
             "aseguradoras": dict(Counter(x["Aseguradora principal"] for x in a if x["Aseguradora principal"]).most_common())}
 

@@ -40,3 +40,8 @@ def test_finiquito_y_reclasificacion_por_senal():
     assert tipo_por_texto("CARTA FINIQUITO  Importe pagado  Coaseguro")[0] == "Finiquito o dictamen"
     assert tipo_vigente("Operación de seguro (no reembolso)", "FINIQUITO") == "Finiquito o dictamen"
     assert tipo_vigente("Receta", "nombre") == "Receta"
+
+
+def test_prefijo_rfc_nombre_compuesto():
+    from reembolsos.contenido import prefijos_rfc
+    assert "PELE" in prefijos_rfc("MARIA ELENA PEREZ LOPEZ") and "PELE" in prefijos_rfc("PEREZ LOPEZ MARIA ELENA")
