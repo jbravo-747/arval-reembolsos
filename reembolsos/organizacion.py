@@ -215,7 +215,7 @@ def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None, progreso
             if nuevos:
                 anotar(f"bloque {n}/{len(bloques)}: {len(lista)} archivos, {nuevos} analizados")
             avance["analizados_esta_corrida"] += nuevos
-            publicar_avance(bloques_hechos=n, archivos_hechos=avance["archivos_hechos"] + len(lista), ultimo_bloque=bloque.split("/")[0])
+            publicar_avance(bloques_hechos=n, archivos_hechos=avance["archivos_hechos"] + len(lista), ultimo_bloque=bloque.split("/")[-1])
 
         # Duplicados: mismo tamaño y mismo contenido (la huella también queda en la caché)
         publicar_avance(etapa="buscando duplicados")
