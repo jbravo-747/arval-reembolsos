@@ -82,3 +82,10 @@ def test_carga_de_la_revision_y_semilla(tmp_path):
     assert juan["RFC"] == "PELJ800101AB1" and juan["Cartera"] == "CARTERA UNO" and "semilla sin revisar" in juan["Notas"]
     docs = ag.buscador(ruta, semilla=True)
     assert {d["nombre"] for d in docs} == {"JUAN PEREZ LOPEZ", "TECNOVIDRIO"} and not any(d["revisado"] for d in docs)
+
+
+def test_posible_misma_persona():
+    base = {"cartera": "C", "evento": "", "tipo": "Otro", "fecha": "2026-01-01", "fecha_origen": "contenido", "duplicado_de": None, "datos": {}}
+    docs = [{**base, "cliente": n} for n in ("FRANCISCO DE LA CRUZ", "FRANCISCO DE LA CRUZ SALAZAR", "MIRIAM OLIVER BUCIO", "MYRIAM OLIVER BUCIO", "ANA LEYVA")]
+    r = [x for x in ag.construir(docs, [])["revisar"] if x["Qué revisar"] == "posible misma persona en dos carpetas"]
+    assert {(x["Cliente"], x["Detalle"]) for x in r} == {("FRANCISCO DE LA CRUZ", "C / FRANCISCO DE LA CRUZ SALAZAR"), ("MIRIAM OLIVER BUCIO", "C / MYRIAM OLIVER BUCIO")}

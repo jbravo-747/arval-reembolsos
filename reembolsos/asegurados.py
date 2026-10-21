@@ -206,6 +206,17 @@ def construir(archivos, expedientes):
             "Notas de Lau": "",
         })
 
+    # Posible misma persona en dos carpetas: las palabras de un nombre están contenidas en el otro, o difieren en una letra
+    nombres = sorted({(c, cl) for c, cl in por_cliente})
+    for i, (c1, n1) in enumerate(nombres):
+        for c2, n2 in nombres[i + 1:]:
+            w1, w2 = normalizar(n1).split(), normalizar(n2).split()
+            contenido = len(w1) >= 2 and len(w2) >= 2 and (set(w1) <= set(w2) or set(w2) <= set(w1))
+            casi = len(w1) == len(w2) >= 3 and sum(a != b for a, b in zip(w1, w2)) == 1 and                 sum(x != y for a, b in zip(w1, w2) if a != b for x, y in zip(a, b)) + abs(sum(len(a) - len(b) for a, b in zip(w1, w2))) <= 2
+            if (contenido or casi) and not set(w1) <= NOMBRES_DE_PILA and not set(w2) <= NOMBRES_DE_PILA:
+                revisar.append({"Cartera": c1, "Cliente": n1, "Qué revisar": "posible misma persona en dos carpetas",
+                                "Detalle": f"{c2} / {n2}"})
+
     filas_exp = []
     por_evento = defaultdict(list)
     for (cartera, cliente), docs in por_cliente.items():
