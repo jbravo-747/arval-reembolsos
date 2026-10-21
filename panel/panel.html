@@ -218,6 +218,11 @@ a{color:var(--accent)}
       <div id="hechoCuerpo" class="vacio">Resumen de la organización de los expedientes históricos: archivos, clientes y eventos encontrados, tipos de documento, lo copiado a la estructura estándar y los expedientes con faltantes.</div>
     </section>
 
+    <section id="secAsegurados">
+      <div class="sec-head"><h2>Base de asegurados</h2><small class="ts" id="asegHora"></small></div>
+      <div id="asegCuerpo" class="vacio">Asegurados, pólizas, personas relacionadas y expedientes reconstruidos a partir de los documentos. Se llena con <code>cli.py asegurados</code>; el detalle está en el Excel Base_Asegurados para que Lau lo revise.</div>
+    </section>
+
     <section id="secActividad">
       <div class="sec-head"><h2>Actividad</h2><span class="muted">últimos movimientos de las automatizaciones</span></div>
       <div id="bitacora" class="vacio">Aquí se registra cada corrida: qué se movió, qué quedó sin cliente, qué falló.</div>
@@ -420,6 +425,7 @@ a{color:var(--accent)}
     db.doc("progreso/organizar").onSnapshot((s) => { estado.avance = s.exists ? s.data() : null; pintarAvance(); }, err);
     db.collection("solicitudes").limit(100).onSnapshot((s) => { estado.solicitudes = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarAvance(); }, err);
     db.doc("organizacion/ultimo").onSnapshot((s) => { estado.organizacion = s.exists ? s.data() : null; pintarHecho(); }, err);
+    db.doc("asegurados/resumen").onSnapshot((s) => { pintarAsegurados(s.exists ? s.data() : null); }, err);
     db.doc("monitor/resumen").onSnapshot((s) => { estado.monitor.resumen = s.exists ? s.data() : null; pintarSemaforo(); }, err);
     db.doc("catalogo/lista").onSnapshot((s) => { estado.catalogo = s.exists ? (s.data().nombres || []) : []; pintarPendientes(); pintarSelectEntrada(); }, err);
     db.collection("pendientes").limit(500).onSnapshot((s) => { estado.pendientes = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarPendientes(); pintarKpis(); }, err);
@@ -452,6 +458,21 @@ a{color:var(--accent)}
           ${pid ? `<li>${pid} documento(s) sin cliente: elige a quién pertenecen en <b>Por atender</b>.</li>` : ""}
           ${abiertos || (pid ? "" : "<li>Nada pendiente.</li>")}</ul></div>
       </div>`;
+  }
+
+  function pintarAsegurados(r){
+    if (!r) return;
+    const cont = $("asegCuerpo"); cont.classList.remove("vacio");
+    $("asegHora").textContent = horaCorta(r.hora);
+    const pct = (v) => r.asegurados ? ` (${Math.round(v / r.asegurados * 100)}%)` : "";
+    const cifra = (v, l, cls = "") => `<div class="cifra ${cls}"><div class="n">${(v ?? 0).toLocaleString("es-MX")}</div><div class="l">${l}</div></div>`;
+    const aseg = Object.entries(r.aseguradoras || {}); const max = Math.max(1, ...aseg.map(([, v]) => v));
+    cont.innerHTML = `<div class="cifras">${cifra(r.asegurados, "asegurados")}${cifra(r.personas_fisicas, "personas físicas")}
+      ${cifra(r.con_rfc, "con RFC" + pct(r.con_rfc))}${cifra(r.con_aseguradora, "con aseguradora" + pct(r.con_aseguradora))}
+      ${cifra(r.con_poliza, "con póliza" + pct(r.con_poliza))}${cifra(r.con_correo, "con correo propio" + pct(r.con_correo))}
+      ${cifra(r.personas_relacionadas, "personas relacionadas")}${cifra(r.polizas, "pólizas")}${cifra(r.expedientes, "expedientes")}
+      ${cifra(r.por_revisar, "por revisar", r.por_revisar ? "warn" : "")}</div>
+      <div><h3 style="font-size:.95rem;margin-bottom:6px">Aseguradora principal</h3><div class="barras">${aseg.map(([k, v]) => `<div class="barra"><span class="k">${esc(k)}</span><span class="pista"><span class="relleno" style="display:block;width:${(v / max * 100).toFixed(1)}%"></span></span><span class="v">${v}</span></div>`).join("")}</div></div>`;
   }
 
   // TEMPORAL: avance de la organización (documento progreso/organizar que publica Claude)
