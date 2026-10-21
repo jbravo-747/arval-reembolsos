@@ -104,6 +104,29 @@ def clasificar_conflictos(archivos, min_carpetas=5):
     return salida
 
 
+def nombre_legitimo(cliente, docs, minimo=2):
+    """Nombre completo del asegurado tal como aparece en documentos oficiales de su carpeta: receptor del CFDI (vale 3) y
+    titular/asegurado/afectado en formatos de la aseguradora (vale 1). Debe ser compatible con el nombre de la carpeta.
+    Devuelve (nombre, fuente) o ("", "") si no hay evidencia suficiente."""
+    puntos, fuentes = Counter(), defaultdict(set)
+    for d in docs:
+        datos = d.get("datos") or {}
+        rec = (datos.get("cfdi") or {}).get("receptor", "")
+        if rec and _mismo_nombre(rec, cliente):
+            puntos[normalizar(rec)] += 3
+            fuentes[normalizar(rec)].add("CFDI")
+        for _rol, nombre in datos.get("personas", []):
+            if es_nombre_de_persona(nombre) and _mismo_nombre(nombre, cliente):
+                puntos[normalizar(nombre)] += 1
+                fuentes[normalizar(nombre)].add("formatos de la aseguradora")
+    if not puntos:
+        return "", ""
+    mejor = max(puntos, key=lambda n: (puntos[n], len(n.split())))
+    if puntos[mejor] < minimo:
+        return "", ""
+    return mejor, f"{' y '.join(sorted(fuentes[mejor]))} ({puntos[mejor]})"
+
+
 def construir(archivos, expedientes):
     """archivos y expedientes de organizar (organizacion.json). Devuelve dict de hojas: asegurados, personas, polizas,
     expedientes, revisar (listas de dicts)."""
@@ -113,6 +136,7 @@ def construir(archivos, expedientes):
             por_cliente[(a["cartera"], a["cliente"])].append(a)
 
     asegurados, personas, polizas, revisar = [], [], [], []
+    legitimo_de = {}
     conflictos = clasificar_conflictos(archivos)
     correos_comunes, personas_comunes = _comunes(archivos, "correos"), _comunes(archivos, "personas")
     for (cartera, cliente, otro), (cat, n) in sorted(conflictos.items()):
@@ -189,10 +213,13 @@ def construir(archivos, expedientes):
                 polizas.append({"Cartera": cartera, "Cliente": cliente, "Póliza": p,
                                 "Aseguradora": pol_aseg[p].most_common(1)[0][0] if pol_aseg[p] else "", "Documentos": n})
 
+        legit, fuente = nombre_legitimo(cliente, docs)
+        legitimo_de[(cartera, cliente)] = legit
         eventos = [e for e in expedientes if e["cartera"] == cartera and e["cliente"] == cliente]
         fechas = sorted(d["fecha"] for d in docs if d.get("fecha_origen") in ("documento", "contenido", "nombre"))
         asegurados.append({
-            "Aprobado": "", "Nombre en catálogo": cliente, "Cartera": cartera, "Cliente": cliente, "Tipo": tipo, "RFC": rfc, "Confianza RFC": rfc_conf,
+            "Aprobado": "", "Nombre en catálogo": legit or cliente, "Nombre legítimo": legit, "Fuente del nombre": fuente,
+            "Cartera": cartera, "Cliente": cliente, "Tipo": tipo, "RFC": rfc, "Confianza RFC": rfc_conf,
             "Aseguradora principal": aseguradoras.most_common(1)[0][0] if aseguradoras else "",
             "Aseguradoras": _top(aseguradoras, 3), "Pólizas": " | ".join(p for p, n in pol.most_common(3) if n >= 2),
             "Correo probable": " | ".join(c for c, _ in correos.most_common() if correo_del_cliente(c, cliente))[:120],
@@ -213,7 +240,11 @@ def construir(archivos, expedientes):
             w1, w2 = normalizar(n1).split(), normalizar(n2).split()
             contenido = len(w1) >= 2 and len(w2) >= 2 and (set(w1) <= set(w2) or set(w2) <= set(w1))
             casi = len(w1) == len(w2) >= 3 and sum(a != b for a, b in zip(w1, w2)) == 1 and                 sum(x != y for a, b in zip(w1, w2) if a != b for x, y in zip(a, b)) + abs(sum(len(a) - len(b) for a, b in zip(w1, w2))) <= 2
-            if (contenido or casi) and not set(w1) <= NOMBRES_DE_PILA and not set(w2) <= NOMBRES_DE_PILA:
+            l1, l2 = legitimo_de.get((c1, n1)), legitimo_de.get((c2, n2))
+            if l1 and l1 == l2:
+                revisar.append({"Cartera": c1, "Cliente": n1, "Qué revisar": "misma persona en dos carpetas (confirmado por documentos)",
+                                "Detalle": f"{c2} / {n2} · nombre legítimo: {l1}"})
+            elif (contenido or casi) and not set(w1) <= NOMBRES_DE_PILA and not set(w2) <= NOMBRES_DE_PILA:
                 revisar.append({"Cartera": c1, "Cliente": n1, "Qué revisar": "posible misma persona en dos carpetas",
                                 "Detalle": f"{c2} / {n2}"})
 
@@ -251,7 +282,10 @@ def resumen(hojas):
             "con_aseguradora": sum(1 for x in a if x["Aseguradora principal"]), "con_poliza": sum(1 for x in a if x["Pólizas"]),
             "con_correo": sum(1 for x in a if x["Correo probable"]), "personas_relacionadas": len(hojas["personas"]),
             "polizas": len(hojas["polizas"]), "expedientes": len(hojas["expedientes"]), "por_revisar": len(hojas["revisar"]),
-            "aseguradoras": dict(Counter(x["Aseguradora principal"] for x in a if x["Aseguradora principal"]).most_common())}
+            "aseguradoras": dict(Counter(x["Aseguradora principal"] for x in a if x["Aseguradora principal"]).most_common()),
+            "con_nombre_legitimo": sum(1 for x in a if x.get("Nombre legítimo")),
+            "facturas_en_relaciones": len(hojas.get("reclamaciones", [])),
+            "facturas_confirmadas": sum(1 for r in hojas.get("reclamaciones", []) if r["Corroboración"] != "sin documento")}
 
 
 def a_excel(hojas, ruta):
@@ -262,9 +296,10 @@ def a_excel(hojas, ruta):
     from openpyxl.worksheet.table import Table, TableStyleInfo
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
-    nombres = {"asegurados": "Asegurados", "personas": "Personas", "polizas": "Polizas", "expedientes": "Expedientes", "revisar": "Revisar"}
+    nombres = {"asegurados": "Asegurados", "personas": "Personas", "polizas": "Polizas", "expedientes": "Expedientes",
+               "reclamaciones": "Reclamaciones", "revisar": "Revisar"}
     for clave, titulo in nombres.items():
-        filas = hojas[clave]
+        filas = hojas.get(clave, [])
         ws = wb.create_sheet(titulo)
         if not filas:
             ws.append(["Sin datos"])
@@ -346,3 +381,35 @@ def buscador(ruta_excel, semilla=False):
                      "polizas": polizas[k][:5], "personas": personas[k][:10], "expedientes": len(ex),
                      "con_faltantes": sum(1 for e in ex if e["faltantes"]), "recientes": ex[:5], "revisado": aprobado(a)})
     return docs
+
+
+def agregar_reclamaciones(hojas, filas):
+    """Suma las relaciones de reclamaciones de Lau (ya corroboradas) a la base: hoja Reclamaciones, columnas por
+    asegurado y por expediente. Nunca incluye padecimiento ni descripción."""
+    hojas["reclamaciones"] = [{"Cartera": f["cartera"], "Cliente": f["cliente"], "Reclamación": f["reclamacion"], "Concepto": f["concepto"],
+                               "Categoría": f["categoria"], "Factura": f["factura"], "Fecha documento": f["fecha_documento"],
+                               "Monto": f["monto"], "Fecha de ingreso": f["fecha_ingreso"], "Folio aseguradora": f["folio"],
+                               "Estatus": f["estatus"], "Fecha de finiquito": f["fecha_finiquito"], "Corroboración": f["corroboracion"],
+                               "Documento": f["documento"], "Evento del documento": f["evento_documento"] or f["evento"],
+                               "Archivo de Lau": f["archivo"]} for f in filas]
+    por = defaultdict(list)
+    for f in filas:
+        por[(f["cartera"], f["cliente"])].append(f)
+    for a in hojas["asegurados"]:
+        fs = por.get((a["Cartera"], a["Cliente"]), [])
+        a["Reclamaciones (Lau)"] = len({f["reclamacion"] for f in fs if f["reclamacion"]})
+        a["Facturas en relación"] = len(fs)
+        a["Confirmadas con documento"] = sum(1 for f in fs if f["corroboracion"] != "sin documento")
+        a["Monto reclamado"] = round(sum(f["monto"] or 0 for f in fs), 2) if fs else ""
+        est = Counter(f["estatus"] for f in fs)
+        a["Estatus (relación)"] = " | ".join(f"{k} {v}" for k, v in est.most_common(3))
+        notas = a.pop("Notas de Lau", "")
+        a["Notas de Lau"] = notas
+    por_evento = defaultdict(set)
+    for f in filas:
+        ev = f["evento_documento"] or f["evento"]
+        if ev and f["reclamacion"]:
+            por_evento[(f["cartera"], f["cliente"], ev)].add(f["reclamacion"])
+    for e in hojas["expedientes"]:
+        e["Reclamación (Lau)"] = " | ".join(sorted(por_evento.get((e["Cartera"], e["Cliente"], e["Evento"]), [])))
+    return hojas

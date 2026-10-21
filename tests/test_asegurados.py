@@ -39,7 +39,7 @@ def test_excel(tmp_path):
     import openpyxl
     ag.a_excel(ag.construir(ARCHIVOS, EXPEDIENTES), tmp_path / "b.xlsx")
     wb = openpyxl.load_workbook(tmp_path / "b.xlsx")
-    assert wb.sheetnames == ["Asegurados", "Personas", "Polizas", "Expedientes", "Revisar"]
+    assert wb.sheetnames == ["Asegurados", "Personas", "Polizas", "Expedientes", "Reclamaciones", "Revisar"]
     assert "tblAsegurados" in wb["Asegurados"].tables
 
 
@@ -89,3 +89,36 @@ def test_posible_misma_persona():
     docs = [{**base, "cliente": n} for n in ("FRANCISCO DE LA CRUZ", "FRANCISCO DE LA CRUZ SALAZAR", "MIRIAM OLIVER BUCIO", "MYRIAM OLIVER BUCIO", "ANA LEYVA")]
     r = [x for x in ag.construir(docs, [])["revisar"] if x["Qué revisar"] == "posible misma persona en dos carpetas"]
     assert {(x["Cliente"], x["Detalle"]) for x in r} == {("FRANCISCO DE LA CRUZ", "C / FRANCISCO DE LA CRUZ SALAZAR"), ("MIRIAM OLIVER BUCIO", "C / MYRIAM OLIVER BUCIO")}
+
+
+def test_nombre_legitimo_y_misma_persona_confirmada():
+    base = {"cartera": "C", "evento": "", "tipo": "Otro", "fecha": "2026-01-01", "fecha_origen": "contenido", "duplicado_de": None}
+    legit = {"cfdi": {"receptor": "MARIA TERESA COLIN ALVAREZ", "rfc_receptor": "COAT800101AB1"}}
+    docs = [{**base, "cliente": "TERESA COLIN", "datos": legit}, {**base, "cliente": "MARIA TERESA COLIN ALVAREZ", "datos": legit}]
+    assert ag.nombre_legitimo("TERESA COLIN", [docs[0]]) == ("MARIA TERESA COLIN ALVAREZ", "CFDI (3)")
+    h = ag.construir(docs, [])
+    assert {a["Nombre en catálogo"] for a in h["asegurados"]} == {"MARIA TERESA COLIN ALVAREZ"}
+    assert any(r["Qué revisar"].startswith("misma persona en dos carpetas (confirmado") for r in h["revisar"])
+
+
+def test_relaciones_de_lau_se_leen_sin_datos_clinicos_y_se_corroboran(tmp_path):
+    import openpyxl
+    from reembolsos import relaciones as rl
+    d = tmp_path / "C" / "JUAN PEREZ LOPEZ" / "REEMBOLSO 1"
+    d.mkdir(parents=True)
+    wb = openpyxl.Workbook(); ws = wb.active
+    ws.append(["PADECIMIENTO", "RECLAMACION", "CONCEPTO", "DESCRIPCIÓN", "FACTURA", "FECHA DE DOCUMENTO", "MONTO", "FECHA DE INGRESO", "FOLIO", "ESTATUS"])
+    ws.append(["dato clínico", "R-1", "FACTURA FARMACIA SAN PABLO", "dato clínico", "A123", "2026-03-10", 700, "2026-03-15", "F-99", "PAGADA"])
+    ws.append(["dato clínico", "R-1", "FACTURA HONORARIOS MEDICOS", "dato clínico", "B9", "2026-03-11", 1500, "2026-03-15", "F-99", "EN PROCESO"])
+    wb.save(d / "relacion.xlsx")
+    filas = rl.leer_relaciones(tmp_path)
+    assert len(filas) == 2 and not any("clínico" in str(v) for f in filas for v in f.values())
+    assert filas[0]["estatus"] == "Pagado" and filas[0]["categoria"] == "Farmacia" and filas[1]["estatus"] == "En proceso"
+    indice = {("C", "JUAN PEREZ LOPEZ"): [{"ruta": "x.xml", "folio": "A123", "total": 700.0, "fecha": "2026-03-10", "evento": "REEMBOLSO 1"},
+                                          {"ruta": "y.pdf", "folio": "", "total": 1500.0, "fecha": "2026-03-12", "evento": "REEMBOLSO 1"}]}
+    rl.corroborar(filas, indice)
+    assert [f["corroboracion"] for f in filas] == ["confirmada por folio", "confirmada por monto y fecha"]
+    h = ag.agregar_reclamaciones(ag.construir(ARCHIVOS, EXPEDIENTES), [{**f, "cartera": "CARTERA UNO"} for f in filas])
+    juan = [a for a in h["asegurados"] if a["Cliente"] == "JUAN PEREZ LOPEZ"][0]
+    assert juan["Facturas en relación"] == 2 and juan["Confirmadas con documento"] == 2 and juan["Monto reclamado"] == 2200.0
+    assert h["expedientes"][0]["Reclamación (Lau)"] == "R-1" and list(juan)[-1] == "Notas de Lau"

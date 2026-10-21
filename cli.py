@@ -557,6 +557,10 @@ def asegurados(cfg):
     if not analisis:
         sys.exit("falta trabajo/organizacion.json: ejecuta organizar primero")
     hojas = ag.construir(analisis["archivos"], analisis["expedientes"])
+    from reembolsos import relaciones as rl
+    filas = rl.leer_relaciones(analisis["raiz"])                                   # relaciones de reclamaciones de Lau
+    indice = rl.indice_facturas(analisis["raiz"], analisis["archivos"], cfg.trabajo / "facturas_cache.jsonl")
+    ag.agregar_reclamaciones(hojas, rl.corroborar(filas, indice))
     ag.a_excel(hojas, cfg.trabajo / "Base_Asegurados.xlsx")
     res = {"hora": ahora().isoformat(timespec="seconds"), **ag.resumen(hojas)}
     _escribir_json(cfg.trabajo / "asegurados_resumen.json", res)
