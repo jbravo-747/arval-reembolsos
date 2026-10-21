@@ -489,6 +489,7 @@ a{color:var(--accent)}
       ${a.contratante ? `<div class="muted">Contratante o agente: ${esc(a.contratante)}</div>` : ""}
       ${(a.personas || []).length ? `<div class="muted">Relacionados: ${a.personas.map(p => esc(p.nombre) + " <span style='opacity:.75'>(" + esc(p.relacion.toLowerCase()) + ")</span>").join(", ")}</div>` : ""}
       <div>${a.expedientes} expediente(s)${a.con_faltantes ? ` · <b>${a.con_faltantes} con faltantes</b>` : ""}</div>
+      ${a.reclamaciones ? `<div class="muted">Reclamaciones de Lau: ${a.reclamaciones} · ${a.facturas_relacion} factura(s), ${a.facturas_confirmadas} confirmada(s) con documento${a.estatus_relacion ? " · " + esc(a.estatus_relacion) : ""}</div>` : ""}
       ${(a.recientes || []).length ? `<details class="info"><summary>Expedientes recientes</summary><ul style="margin:6px 0 0;padding-left:18px;font-size:.88rem">${a.recientes.map(e => `<li>${esc(e.evento)}${e.siniestro ? " · siniestro " + esc(e.siniestro) : ""}${e.resuelto ? " · resuelto" : ""}${e.faltantes ? " · falta " + esc(e.faltantes) : ""}</li>`).join("")}</ul></details>` : ""}
     </div>`).join("");
   }
@@ -506,6 +507,8 @@ a{color:var(--accent)}
       ${cifra(r.con_rfc, "con RFC" + pct(r.con_rfc))}${cifra(r.con_aseguradora, "con aseguradora" + pct(r.con_aseguradora))}
       ${cifra(r.con_poliza, "con póliza" + pct(r.con_poliza))}${cifra(r.con_correo, "con correo propio" + pct(r.con_correo))}
       ${cifra(r.personas_relacionadas, "personas relacionadas")}${cifra(r.polizas, "pólizas")}${cifra(r.expedientes, "expedientes")}
+      ${cifra(r.con_nombre_legitimo, "nombre legítimo en documentos")}${cifra(r.facturas_en_relaciones, "facturas en relaciones de Lau")}
+      ${cifra(r.facturas_confirmadas, "confirmadas con documento")}${cifra(r.facturas_probables, "probables (revisar)", r.facturas_probables ? "warn" : "")}
       ${cifra(r.por_revisar, "por revisar", r.por_revisar ? "warn" : "")}</div>
       <div><h3 style="font-size:.95rem;margin-bottom:6px">Aseguradora principal</h3><div class="barras">${aseg.map(([k, v]) => `<div class="barra"><span class="k">${esc(k)}</span><span class="pista"><span class="relleno" style="display:block;width:${(v / max * 100).toFixed(1)}%"></span></span><span class="v">${v}</span></div>`).join("")}</div></div>`;
   }

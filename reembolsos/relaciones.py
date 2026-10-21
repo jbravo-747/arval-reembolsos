@@ -207,6 +207,13 @@ def corroborar(filas, indice, tolerancia=1.0, dias=7):
                 if x.get("total") is not None and abs(x["total"] - f["monto"]) <= tolerancia and (not fd or not fx or abs((fd - fx).days) <= dias):
                     hallada, como = x, "confirmada por monto y fecha"
                     break
+        if not hallada and len(folio) >= 3:
+            hallada = next((x for x in facturas if solo_digitos(x.get("folio")) and len(solo_digitos(x.get("folio"))) >= 3 and
+                            (solo_digitos(x.get("folio")).endswith(folio) or folio.endswith(solo_digitos(x.get("folio"))))), None)
+            como = "probable: folio parcial (revisar)" if hallada else ""
+        if not hallada and f["monto"]:
+            hallada = next((x for x in facturas if x.get("total") is not None and abs(x["total"] - f["monto"]) <= tolerancia), None)
+            como = "probable: mismo monto, otra fecha (revisar)" if hallada else ""
         f["corroboracion"] = como or "sin documento"
         f["documento"] = hallada["ruta"] if hallada else ""
         f["evento_documento"] = hallada.get("evento", "") if hallada else ""

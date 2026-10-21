@@ -285,7 +285,8 @@ def resumen(hojas):
             "aseguradoras": dict(Counter(x["Aseguradora principal"] for x in a if x["Aseguradora principal"]).most_common()),
             "con_nombre_legitimo": sum(1 for x in a if x.get("Nombre legítimo")),
             "facturas_en_relaciones": len(hojas.get("reclamaciones", [])),
-            "facturas_confirmadas": sum(1 for r in hojas.get("reclamaciones", []) if r["Corroboración"] != "sin documento")}
+            "facturas_confirmadas": sum(1 for r in hojas.get("reclamaciones", []) if r["Corroboración"].startswith("confirmada")),
+            "facturas_probables": sum(1 for r in hojas.get("reclamaciones", []) if r["Corroboración"].startswith("probable"))}
 
 
 def a_excel(hojas, ruta):
@@ -379,7 +380,10 @@ def buscador(ruta_excel, semilla=False):
                      "tipo": a["Tipo"], "rfc": str(a.get("RFC") or ""), "aseguradora": a.get("Aseguradora principal", ""),
                      "correo": str(a.get("Correo probable") or ""), "contratante": str(a.get("Contratante o agente") or ""),
                      "polizas": polizas[k][:5], "personas": personas[k][:10], "expedientes": len(ex),
-                     "con_faltantes": sum(1 for e in ex if e["faltantes"]), "recientes": ex[:5], "revisado": aprobado(a)})
+                     "con_faltantes": sum(1 for e in ex if e["faltantes"]), "recientes": ex[:5], "revisado": aprobado(a),
+                     "nombre_legitimo": str(a.get("Nombre legítimo") or ""), "reclamaciones": a.get("Reclamaciones (Lau)") or 0,
+                     "facturas_relacion": a.get("Facturas en relación") or 0, "facturas_confirmadas": a.get("Confirmadas con documento") or 0,
+                     "estatus_relacion": str(a.get("Estatus (relación)") or "")})
     return docs
 
 
@@ -399,7 +403,8 @@ def agregar_reclamaciones(hojas, filas):
         fs = por.get((a["Cartera"], a["Cliente"]), [])
         a["Reclamaciones (Lau)"] = len({f["reclamacion"] for f in fs if f["reclamacion"]})
         a["Facturas en relación"] = len(fs)
-        a["Confirmadas con documento"] = sum(1 for f in fs if f["corroboracion"] != "sin documento")
+        a["Confirmadas con documento"] = sum(1 for f in fs if f["corroboracion"].startswith("confirmada"))
+        a["Probables (revisar)"] = sum(1 for f in fs if f["corroboracion"].startswith("probable"))
         a["Monto reclamado"] = round(sum(f["monto"] or 0 for f in fs), 2) if fs else ""
         est = Counter(f["estatus"] for f in fs)
         a["Estatus (relación)"] = " | ".join(f"{k} {v}" for k, v in est.most_common(3))
