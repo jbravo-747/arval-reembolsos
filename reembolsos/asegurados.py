@@ -16,9 +16,33 @@ EMPRESA = {"SA", "CV", "SC", "SAPI", "AC", "SRL", "SAB", "SOFOM", "CORPORATIVO",
            "DISTRIBUIDORA", "INMOBILIARIA", "TRANSPORTES", "CLIENTES"}
 
 
+NOMBRES_DE_PILA = {"MIGUEL", "ANGEL", "JOSE", "JUAN", "MARIA", "LUIS", "CARLOS", "JORGE", "ANA", "ROSA", "LAURA", "PEDRO", "FRANCISCO",
+                   "ANTONIO", "MANUEL", "JESUS", "GUADALUPE", "ALEJANDRO", "FERNANDO", "RICARDO", "EDUARDO", "ROBERTO", "DANIEL",
+                   "SERGIO", "MARTHA", "PATRICIA", "ELENA", "CARMEN", "TERESA", "SOFIA", "DIEGO", "PABLO", "DAVID", "JAVIER"}
+NO_PERSONA = {"HIJO", "HIJA", "PRIMER", "SEGUNDO", "APELLIDO", "APELLIDOS", "PARTICIPANTE", "AUTORIZA", "AUTORIZAN", "AUTORIZO", "CONSULTA",
+              "SE", "NOMBRES", "PATERNO", "MATERNO", "FIRMA", "ESTE", "ESTA", "QUE", "PARA", "CON", "POR", "SU", "EN", "AL", "LE", "LO",
+              "QT", "MEDICO", "TRATANTE", "DR", "DRA", "HOSPITAL", "SEGURO", "SEGUROS", "POLIZA", "CERTIFICADO", "COBERTURA", "PLAN"}
+
+
 def tipo_persona(nombre):
     w = normalizar(nombre).split()
-    return "Persona física" if len(w) >= 3 and not set(w) & EMPRESA else "Empresa o grupo (revisar)"
+    if set(w) & EMPRESA or len(w) == 1:
+        return "Empresa o grupo (revisar)"
+    return "Persona física" if len(w) >= 3 else "Persona física (nombre incompleto)"
+
+
+def es_nombre_de_persona(nombre):
+    w = normalizar(nombre).split()
+    return 2 <= len(w) <= 5 and not set(w) & NO_PERSONA and all(len(x) >= 2 for x in w)
+
+
+def poliza_valida(p):
+    """Descarta fechas (vigencias) que el lector tomó como número de póliza."""
+    return not re.fullmatch(r"\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}", p) and not re.fullmatch(r"20\d{2}[/\-.]\d{2}[/\-.]\d{2}", p)
+
+
+def clave_poliza(p):
+    return re.sub(r"^0+", "", re.sub(r"[^0-9A-Z]", "", p.upper()))
 
 
 def _mismo_nombre(a, b):
@@ -66,7 +90,9 @@ def clasificar_conflictos(archivos, min_carpetas=5):
     salida = {}
     for (cartera, cliente, otro), n in pares.items():
         palabras = set(normalizar(otro).split())
-        if len(carpetas_por_otro[otro]) >= min_carpetas or palabras & EMPRESA:
+        if palabras <= NOMBRES_DE_PILA:
+            cat = "genérico"
+        elif len(carpetas_por_otro[otro]) >= min_carpetas or palabras & EMPRESA:
             cat = "contratante o agente"
         elif len(palabras) < 3:
             cat = "genérico"
@@ -111,7 +137,7 @@ def construir(archivos, expedientes):
                 rfcs[r] += 1
             if datos.get("aseguradora"):
                 aseguradoras[datos["aseguradora"]] += 1
-            for p in datos.get("polizas", []):
+            for p in {clave_poliza(x): x for x in datos.get("polizas", []) if poliza_valida(x)}:
                 pol[p] += 1
                 if datos.get("aseguradora"):
                     pol_aseg[p][datos["aseguradora"]] += 1
@@ -119,12 +145,12 @@ def construir(archivos, expedientes):
                 if c not in correos_comunes and not any(dom in c.split("@")[-1] for dom in DOMINIOS_INSTITUCIONALES):
                     correos[c] += 1
             for rol, nombre in datos.get("personas", []):
-                if nombre not in personas_comunes:
+                if nombre not in personas_comunes and es_nombre_de_persona(nombre):
                     gente[(rol, nombre)] += 1
 
         # RFC del asegurado
         rfc, rfc_conf = "", ""
-        if tipo == "Persona física":
+        if tipo.startswith("Persona física"):
             prefijos = prefijos_rfc(cliente)
             validos = Counter({r: n + rfcs_receptor.get(r, 0) for r, n in (rfcs + rfcs_receptor).items() if len(r) == 13 and r[:4] in prefijos})
             if validos:
@@ -166,7 +192,7 @@ def construir(archivos, expedientes):
         eventos = [e for e in expedientes if e["cartera"] == cartera and e["cliente"] == cliente]
         fechas = sorted(d["fecha"] for d in docs if d.get("fecha_origen") in ("documento", "contenido", "nombre"))
         asegurados.append({
-            "Cartera": cartera, "Cliente": cliente, "Tipo": tipo, "RFC": rfc, "Confianza RFC": rfc_conf,
+            "Aprobado": "", "Nombre en catálogo": cliente, "Cartera": cartera, "Cliente": cliente, "Tipo": tipo, "RFC": rfc, "Confianza RFC": rfc_conf,
             "Aseguradora principal": aseguradoras.most_common(1)[0][0] if aseguradoras else "",
             "Aseguradoras": _top(aseguradoras, 3), "Pólizas": " | ".join(p for p, n in pol.most_common(3) if n >= 2),
             "Correo probable": " | ".join(c for c, _ in correos.most_common() if correo_del_cliente(c, cliente))[:120],
@@ -177,6 +203,7 @@ def construir(archivos, expedientes):
             "Personas relacionadas": sum(1 for p in personas if p["Cliente"] == cliente and p["Cartera"] == cartera),
             "Expedientes": len(eventos), "Con faltantes": sum(1 for e in eventos if e["faltantes"]),
             "Documentos": len(docs), "Primer documento": fechas[0] if fechas else "", "Último documento": fechas[-1] if fechas else "",
+            "Notas de Lau": "",
         })
 
     filas_exp = []
@@ -192,7 +219,7 @@ def construir(archivos, expedientes):
             if datos.get("aseguradora"):
                 aseg[datos["aseguradora"]] += 1
             sin.update(datos.get("siniestros", []))
-            pol.update(datos.get("polizas", []))
+            pol.update({clave_poliza(x) for x in datos.get("polizas", []) if poliza_valida(x)})
             try:
                 total += float(str((datos.get("cfdi") or {}).get("total") or 0).replace(",", ""))
             except ValueError:
@@ -208,7 +235,7 @@ def construir(archivos, expedientes):
 
 def resumen(hojas):
     a = hojas["asegurados"]
-    return {"asegurados": len(a), "personas_fisicas": sum(1 for x in a if x["Tipo"] == "Persona física"),
+    return {"asegurados": len(a), "personas_fisicas": sum(1 for x in a if x["Tipo"].startswith("Persona física")),
             "con_rfc": sum(1 for x in a if x["RFC"]), "rfc_alta": sum(1 for x in a if x["Confianza RFC"].startswith("alta")),
             "con_aseguradora": sum(1 for x in a if x["Aseguradora principal"]), "con_poliza": sum(1 for x in a if x["Pólizas"]),
             "con_correo": sum(1 for x in a if x["Correo probable"]), "personas_relacionadas": len(hojas["personas"]),
@@ -241,6 +268,70 @@ def a_excel(hojas, ruta):
             ancho = max([len(str(k))] + [len(str(f.get(k, ""))) for f in filas[:300]])
             ws.column_dimensions[get_column_letter(i)].width = min(max(10, ancho + 2), 60)
         ws.freeze_panes = "B2"
+        if clave == "asegurados":
+            from openpyxl.worksheet.datavalidation import DataValidation
+            dv = DataValidation(type="list", formula1='"sí,no"', allow_blank=True,
+                                promptTitle="Revisión", prompt="sí = entra al catálogo; no = se descarta. Puedes corregir Nombre en catálogo, RFC y Correo probable.")
+            ws.add_data_validation(dv)
+            dv.add(f"A2:A{len(filas) + 1}")
         for c in ws[1]:
             c.font = Font(bold=True, color="FFFFFF")
     wb.save(ruta)
+
+
+# ---------- carga después de la revisión de Lau ----------
+def leer_hoja(ruta, hoja):
+    import openpyxl
+    wb = openpyxl.load_workbook(ruta, read_only=True, data_only=True)
+    if hoja not in wb.sheetnames:
+        return []
+    filas = list(wb[hoja].iter_rows(values_only=True))
+    if not filas or filas[0][0] == "Sin datos":
+        return []
+    enc = [str(c or "") for c in filas[0]]
+    return [{k: ("" if v is None else v) for k, v in zip(enc, f)} for f in filas[1:] if any(v not in (None, "") for v in f)]
+
+
+def aprobado(fila):
+    return normalizar(fila.get("Aprobado", "")) in ("SI", "S", "OK", "X")
+
+
+def filas_catalogo(asegurados_revisados, fecha, semilla=False):
+    """Filas para tblClientes (Correo, NombreCliente, Notas, Tipo, Alias, RFC, Cartera): una por correo del asegurado aprobado;
+    sin correo, una fila con el correo vacío (el catálogo también se usa para reconocer el nombre en los documentos)."""
+    salida = []
+    for a in asegurados_revisados:
+        if not (aprobado(a) or semilla):
+            continue
+        nombre = re.sub(r"\s+", " ", str(a.get("Nombre en catálogo") or a.get("Cliente") or "")).strip()
+        correos = [c.strip().lower() for c in str(a.get("Correo probable") or "").split("|") if "@" in c] or [""]
+        for c in correos:
+            salida.append({"Correo": c, "NombreCliente": nombre, "Notas": f"Alta desde la base de asegurados {fecha}" + ("; semilla sin revisar" if semilla and not aprobado(a) else "") +
+                           (f"; {a['Notas de Lau']}" if a.get("Notas de Lau") else ""), "Tipo": "", "Alias": "",
+                           "RFC": str(a.get("RFC") or "").strip().upper(), "Cartera": str(a.get("Cartera") or "")})
+    return salida
+
+
+def buscador(ruta_excel, semilla=False):
+    """Documentos del buscador del panel (uno por asegurado aprobado; con semilla, todos, marcados sin revisar)
+    con sus personas, pólizas y expedientes recientes."""
+    aseg = [a for a in leer_hoja(ruta_excel, "Asegurados") if aprobado(a) or semilla]
+    personas, polizas, exps = defaultdict(list), defaultdict(list), defaultdict(list)
+    for p in leer_hoja(ruta_excel, "Personas"):
+        personas[(p["Cartera"], p["Cliente"])].append({"nombre": p["Persona"], "relacion": p["Relación probable"]})
+    for p in leer_hoja(ruta_excel, "Polizas"):
+        polizas[(p["Cartera"], p["Cliente"])].append({"poliza": str(p["Póliza"]), "aseguradora": p["Aseguradora"]})
+    for e in leer_hoja(ruta_excel, "Expedientes"):
+        exps[(e["Cartera"], e["Cliente"])].append({"evento": e["Evento"], "ultimo": str(e["Último"]), "faltantes": e["Faltantes"],
+                                                   "resuelto": bool(e.get("Resuelto por la aseguradora")), "aseguradora": e["Aseguradora"],
+                                                   "siniestro": str(e.get("Siniestro(s)") or "")})
+    docs = []
+    for a in aseg:
+        k = (a["Cartera"], a["Cliente"])
+        ex = sorted(exps[k], key=lambda e: e["ultimo"], reverse=True)
+        docs.append({"nombre": str(a.get("Nombre en catálogo") or a["Cliente"]), "carpeta": a["Cliente"], "cartera": a["Cartera"],
+                     "tipo": a["Tipo"], "rfc": str(a.get("RFC") or ""), "aseguradora": a.get("Aseguradora principal", ""),
+                     "correo": str(a.get("Correo probable") or ""), "contratante": str(a.get("Contratante o agente") or ""),
+                     "polizas": polizas[k][:5], "personas": personas[k][:10], "expedientes": len(ex),
+                     "con_faltantes": sum(1 for e in ex if e["faltantes"]), "recientes": ex[:5], "revisado": aprobado(a)})
+    return docs

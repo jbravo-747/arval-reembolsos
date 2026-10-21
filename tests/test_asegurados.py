@@ -62,3 +62,23 @@ def test_conflictos_se_clasifican():
 def test_correo_del_cliente():
     assert ag.correo_del_cliente("hilda.reyna80@gmail.com", "HILDA REYNA INES ROLDAN")
     assert not ag.correo_del_cliente("contacto@laboratorio.com", "HILDA REYNA INES ROLDAN")
+
+
+def test_limpieza_de_polizas_personas_y_tipos():
+    assert not ag.poliza_valida("21/12/2023") and ag.poliza_valida("49874068")
+    assert ag.clave_poliza("00000049874068") == ag.clave_poliza("49874068")
+    assert not ag.es_nombre_de_persona("PARTICIPANTE SE AUTORIZA") and not ag.es_nombre_de_persona("HIJO PRIMER APELLIDO ARCINIEGA")
+    assert ag.es_nombre_de_persona("MARIA PEREZ GARCIA")
+    assert ag.tipo_persona("EDUARDO ARCINEAGA") == "Persona física (nombre incompleto)" and ag.tipo_persona("TECNOVIDRIO").startswith("Empresa")
+
+
+def test_carga_de_la_revision_y_semilla(tmp_path):
+    ruta = tmp_path / "b.xlsx"
+    ag.a_excel(ag.construir(ARCHIVOS, EXPEDIENTES), ruta)
+    revisados = ag.leer_hoja(ruta, "Asegurados")
+    assert ag.filas_catalogo(revisados, "2026-10-21") == []                 # nada aprobado todavía
+    semilla = ag.filas_catalogo(revisados, "2026-10-21", semilla=True)
+    juan = [f for f in semilla if f["NombreCliente"] == "JUAN PEREZ LOPEZ"][0]
+    assert juan["RFC"] == "PELJ800101AB1" and juan["Cartera"] == "CARTERA UNO" and "semilla sin revisar" in juan["Notas"]
+    docs = ag.buscador(ruta, semilla=True)
+    assert {d["nombre"] for d in docs} == {"JUAN PEREZ LOPEZ", "TECNOVIDRIO"} and not any(d["revisado"] for d in docs)

@@ -17,6 +17,8 @@
   python cli.py puente --entrada <Reembolsos> --destino <Arval> [--modo aplica]
                                          lleva lo nuevo que dejó Power Automate a la estructura estándar de /Arval
   python cli.py asegurados               base de asegurados y expedientes (Excel) a partir del análisis de organizar
+  python cli.py cargar-asegurados [--excel X] [--semilla-sin-revisar]
+                                         catálogo (hoja Clientes con Cartera y RFC) y buscador del panel desde la base revisada
   python cli.py latido <rutina> <resultado> [detalle]
   python cli.py decisiones-locales       (respaldo) OCR de Windows en lugar del agente; solo en un equipo Windows
 
@@ -562,6 +564,45 @@ def asegurados(cfg):
     print(f"Excel para Lau: {cfg.trabajo / 'Base_Asegurados.xlsx'}")
 
 
+def cargar_asegurados(cfg, excel, semilla=False):
+    """Carga la base revisada por Lau (columna Aprobado = sí; con --semilla, todos marcados "sin revisar"):
+    trabajo/Clientes_para_catalogo.xlsx (filas para la hoja Clientes con Cartera y RFC) y trabajo/buscador_lista.json
+    (documento buscador/lista del panel). En modo aplica con credenciales de Graph agrega las
+    filas nuevas a tblClientes (no repite nombres que ya están)."""
+    import openpyxl
+    from openpyxl.worksheet.table import Table
+    from reembolsos import asegurados as ag
+    excel = Path(excel)
+    filas = ag.filas_catalogo(ag.leer_hoja(excel, "Asegurados"), ahora().strftime("%Y-%m-%d"), semilla)
+    enc = ["Correo", "NombreCliente", "Notas", "Tipo", "Alias", "RFC", "Cartera"]
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Clientes"
+    ws.append(enc)
+    for f in filas:
+        ws.append([f[k] for k in enc])
+    ws.add_table(Table(displayName="tblClientesNuevos", ref=f"A1:G{max(len(filas), 1) + 1}"))
+    wb.save(cfg.trabajo / "Clientes_para_catalogo.xlsx")
+    docs = ag.buscador(excel, semilla)
+    # El buscador del panel lee un solo documento buscador/lista: {"asegurados": [...]}
+    _escribir_json(cfg.trabajo / "buscador_lista.json", {"asegurados": docs})
+    print(f"catálogo: {len(filas)} filas en {cfg.trabajo / 'Clientes_para_catalogo.xlsx'} | buscador: {len(docs)} asegurados"
+          + (" (semilla sin revisar)" if semilla else ""))
+    if cfg.modo == "aplica" and cfg.client_id:
+        g = Graph(cfg)
+        archivo_id = _control(g, cfg)
+        enc_c, _ = g.tabla_filas(archivo_id, "tblClientes")
+        existentes = {normalizar(c.get("NombreCliente")) + "|" + str(c.get("Correo") or "").lower()
+                      for c in g.tabla_como_dicts(archivo_id, "tblClientes")}
+        nuevas = 0
+        for f in filas:
+            if normalizar(f["NombreCliente"]) + "|" + f["Correo"] in existentes:
+                continue
+            g.tabla_agregar_fila(archivo_id, "tblClientes", enc_c, f)
+            nuevas += 1
+        print(f"tblClientes: {nuevas} filas agregadas" + ("" if "Cartera" in enc_c else " (la tabla no tiene columna Cartera: agrégala)"))
+    else:
+        print("sin escribir en Microsoft 365 (modo propone o sin credenciales): pega Clientes_para_catalogo.xlsx en la hoja Clientes")
+
+
 def _resumen_organizacion(analisis, etapa):
     """Documento organizacion/ultimo del panel: solo metadatos (carpetas, tipos y conteos), nunca contenido."""
     return {"hora": ahora().isoformat(timespec="seconds"), "etapa": etapa, **analisis["resumen"],
@@ -622,7 +663,7 @@ def decisiones_locales(cfg):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("comando", choices=["selftest", "pull", "apply", "resumen", "borradores", "ingresar", "indexar", "organizar", "semilla", "puente", "asegurados",
+    p.add_argument("comando", choices=["selftest", "pull", "apply", "resumen", "borradores", "ingresar", "indexar", "organizar", "semilla", "puente", "asegurados", "cargar-asegurados",
                                        "latido", "decisiones-locales"])
     p.add_argument("args", nargs="*")
     p.add_argument("--modo", choices=["propone", "aplica"])
@@ -634,10 +675,12 @@ def main():
     p.add_argument("--entrada", help="puente: carpeta /Reembolsos sincronizada (Power Automate)")
     p.add_argument("--destino", help="semilla/puente: carpeta /Arval sincronizada, o carpeta nueva donde se arma la estructura estándar (fuera de --local)")
     p.add_argument("--sin-leer", action="store_true", help="organizar: no abre PDF ni XML (solo nombres y carpetas)")
+    p.add_argument("--excel", help="cargar-asegurados: Base_Asegurados.xlsx revisado por Lau")
+    p.add_argument("--semilla-sin-revisar", action="store_true", help="cargar-asegurados: carga todos, marcados sin revisar")
     p.add_argument("--sin-ocr", action="store_true", help="organizar: no pasa OCR a escaneos ni fotos (más rápido)")
     p.add_argument("--solo-carpetas", action="store_true", help="semilla: crea las carpetas sin copiar archivos")
     a = p.parse_args()
-    cfg = cargar(credenciales=a.comando not in ("organizar", "semilla", "puente", "asegurados"))
+    cfg = cargar(credenciales=a.comando not in ("organizar", "semilla", "puente", "asegurados", "cargar-asegurados"))
     if a.modo:
         cfg = cfg.__class__(**{**cfg.__dict__, "modo": a.modo})
     cfg.trabajo.mkdir(parents=True, exist_ok=True)
@@ -665,6 +708,8 @@ def main():
         if not a.local or not a.destino:
             sys.exit("uso: semilla --local <carpeta original> --destino <carpeta nueva> [--solo-carpetas]")
         semilla(cfg, a.local, a.destino, a.solo_carpetas)
+    elif a.comando == "cargar-asegurados":
+        cargar_asegurados(cfg, a.excel or cfg.trabajo / "Base_Asegurados.xlsx", a.semilla_sin_revisar)
     elif a.comando == "asegurados":
         asegurados(cfg)
     elif a.comando == "puente":

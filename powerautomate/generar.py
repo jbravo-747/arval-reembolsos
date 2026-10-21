@@ -22,7 +22,7 @@ API = {
 }
 
 INVENTARIO = ["Fecha", "Hora", "Remitente", "Dominio", "Asunto", "NumAdjuntos", "Adjuntos", "Extensiones"]
-CLIENTES = ["Correo", "NombreCliente", "Notas", "Tipo", "Alias", "RFC"]
+CLIENTES = ["Correo", "NombreCliente", "Notas", "Tipo", "Alias", "RFC", "Cartera"]
 REGISTRO = [
     "ID", "FechaRecepcion", "HoraRecepcion", "IdCorreo", "Remitente", "Cliente", "Asunto",
     "NombreOriginal", "TamanoBytes", "NombreGuardado", "Ruta", "TipoDocumento", "UUID_CFDI",

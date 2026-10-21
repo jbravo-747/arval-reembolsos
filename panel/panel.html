@@ -52,7 +52,8 @@ section{background:var(--surface);border:1px solid var(--line);border-radius:var
 .item .m{font-size:.86rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px}
 .item .alerta{font-size:.86rem;color:var(--warn)}
 .acciones{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
-select,input[type=text],input[type=email],textarea{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0;max-width:100%}
+#buscar{width:100%}
+select,input[type=text],input[type=email],input[type=search],textarea{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0;max-width:100%}
 textarea{width:100%;resize:vertical}
 button.btn{font:inherit;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
 button.btn.sec{background:transparent;color:var(--accent)}
@@ -145,6 +146,13 @@ a{color:var(--accent)}
       </section>
 
       <div class="columna">
+        <section id="secBuscar">
+          <div class="sec-head"><h2>Buscar asegurado</h2><span class="muted" id="buscarNota"></span></div>
+          <label for="buscar" class="muted">Nombre, RFC, póliza o persona relacionada</label>
+          <input type="search" id="buscar" autocomplete="off" placeholder="Ej. Pérez, PELJ800101, 12345678">
+          <div class="lista" id="buscarResultados"><div class="vacio">La base de asegurados se carga aquí; escribe al menos 3 letras para buscar.</div></div>
+        </section>
+
         <section id="secSoltar">
           <div class="sec-head"><h2>Soltar archivos</h2><span class="muted">WhatsApp, escáner, lo que llegue fuera del correo</span></div>
           <label class="zona" id="zona" for="archivos">
@@ -426,6 +434,7 @@ a{color:var(--accent)}
     db.collection("solicitudes").limit(100).onSnapshot((s) => { estado.solicitudes = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarAvance(); }, err);
     db.doc("organizacion/ultimo").onSnapshot((s) => { estado.organizacion = s.exists ? s.data() : null; pintarHecho(); }, err);
     db.doc("asegurados/resumen").onSnapshot((s) => { pintarAsegurados(s.exists ? s.data() : null); }, err);
+    db.doc("buscador/lista").onSnapshot((s) => { estado.buscador = s.exists ? (s.data().asegurados || []) : []; pintarBuscador(); }, err);
     db.doc("monitor/resumen").onSnapshot((s) => { estado.monitor.resumen = s.exists ? s.data() : null; pintarSemaforo(); }, err);
     db.doc("catalogo/lista").onSnapshot((s) => { estado.catalogo = s.exists ? (s.data().nombres || []) : []; pintarPendientes(); pintarSelectEntrada(); }, err);
     db.collection("pendientes").limit(500).onSnapshot((s) => { estado.pendientes = s.docs.map(d => ({ _id: d.id, ...d.data() })); pintarPendientes(); pintarKpis(); }, err);
@@ -459,6 +468,32 @@ a{color:var(--accent)}
           ${abiertos || (pid ? "" : "<li>Nada pendiente.</li>")}</ul></div>
       </div>`;
   }
+
+  // Buscar asegurado (colección buscador: uno por asegurado; revisado = aprobado por Lau)
+  function pintarBuscador(){
+    const lista = estado.buscador || [];
+    const sinRevisar = lista.filter(a => !a.revisado).length;
+    $("buscarNota").textContent = lista.length ? `${lista.length} asegurados${sinRevisar ? ` · ${sinRevisar} sin revisar` : ""}` : "";
+    const q = normaliza($("buscar").value);
+    const cont = $("buscarResultados");
+    if (!lista.length) return;
+    if (q.length < 3) { cont.innerHTML = `<div class="vacio">Escribe al menos 3 letras.</div>`; return; }
+    const palabras = q.split(" ").filter(Boolean);
+    const hits = lista.filter(a => { const txt = a._txt || (a._txt = normaliza([a.nombre, a.rfc, a.correo, a.cartera, ...(a.polizas || []).map(p => p.poliza), ...(a.personas || []).map(p => p.nombre)].join(" "))); return palabras.every(w => txt.includes(w)); }).slice(0, 8);
+    if (!hits.length) { cont.innerHTML = `<div class="vacio">Sin coincidencias.</div>`; return; }
+    cont.innerHTML = hits.map(a => `<div class="exp">
+      <div class="fila"><strong>${esc(a.nombre)}</strong><span>${a.revisado ? "" : `<span class="estado revision">sin revisar</span>`}</span></div>
+      <div class="muted">${esc(a.cartera)} · ${esc(a.tipo)}${a.rfc ? ` · RFC ${esc(a.rfc)}` : ""}${a.aseguradora ? ` · ${esc(a.aseguradora)}` : ""}</div>
+      ${(a.polizas || []).length ? `<div class="muted">Pólizas: ${a.polizas.map(p => esc(p.poliza + (p.aseguradora ? " (" + p.aseguradora + ")" : ""))).join(", ")}</div>` : ""}
+      ${a.correo ? `<div class="muted">Correo: ${esc(a.correo)}</div>` : ""}
+      ${a.contratante ? `<div class="muted">Contratante o agente: ${esc(a.contratante)}</div>` : ""}
+      ${(a.personas || []).length ? `<div class="muted">Relacionados: ${a.personas.map(p => esc(p.nombre) + " <span style='opacity:.75'>(" + esc(p.relacion.toLowerCase()) + ")</span>").join(", ")}</div>` : ""}
+      <div>${a.expedientes} expediente(s)${a.con_faltantes ? ` · <b>${a.con_faltantes} con faltantes</b>` : ""}</div>
+      ${(a.recientes || []).length ? `<details class="info"><summary>Expedientes recientes</summary><ul style="margin:6px 0 0;padding-left:18px;font-size:.88rem">${a.recientes.map(e => `<li>${esc(e.evento)}${e.siniestro ? " · siniestro " + esc(e.siniestro) : ""}${e.resuelto ? " · resuelto" : ""}${e.faltantes ? " · falta " + esc(e.faltantes) : ""}</li>`).join("")}</ul></details>` : ""}
+    </div>`).join("");
+  }
+  const normaliza = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  $("buscar").addEventListener("input", pintarBuscador);
 
   function pintarAsegurados(r){
     if (!r) return;
