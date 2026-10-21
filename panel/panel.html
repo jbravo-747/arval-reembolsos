@@ -80,6 +80,14 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 .respuesta{white-space:pre-wrap;background:var(--surface-2);border-radius:8px;padding:10px 12px;font-size:.93rem}
 small.ts{color:var(--muted);font-variant-numeric:tabular-nums}
+.columna{display:flex;flex-direction:column;gap:18px;min-width:0}
+.vista{display:flex;flex-direction:column;gap:18px}
+.pestanas{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--surface)}
+.pestanas button{font:inherit;font-weight:600;font-size:.9rem;padding:6px 16px;border:0;border-radius:999px;background:transparent;color:var(--muted);cursor:pointer}
+.pestanas button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+details.info summary{cursor:pointer;color:var(--muted);font-weight:600;font-size:.9rem}
+details.info .lista{margin-top:8px}
+
 /* Lo que se hizo: resumen de la organización de expedientes y de la última corrida */
 .hecho-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 @media (max-width:860px){.hecho-grid{grid-template-columns:1fr}}
@@ -113,106 +121,107 @@ a{color:var(--accent)}
   <header>
     <div>
       <h1>Panel de reembolsos</h1>
-      <div class="muted">Buzón de Lau · lo que las automatizaciones dejaron pendiente y lo que puedes decidir aquí</div>
+      <div class="muted">Expedientes de reembolso de Arval · lo que llegó, lo que se armó y lo que falta</div>
     </div>
-    <div class="semaforo" id="semaforo">
-      <span class="chip"><span class="dot"></span>Clasificador: sin datos</span>
-      <span class="chip"><span class="dot"></span>Resumen diario: sin datos</span>
-    </div>
+    <nav class="pestanas" role="tablist" aria-label="Vista del panel">
+      <button type="button" role="tab" id="tab-usuario" aria-controls="vista-usuario" aria-selected="true">Usuario</button>
+      <button type="button" role="tab" id="tab-tecnico" aria-controls="vista-tecnico" aria-selected="false">Técnico</button>
+    </nav>
   </header>
 
   <div id="avisoDb" class="aviso" hidden>Esta vista no puede conectarse a los datos del panel. Ábrelo desde tu cuenta de la organización.</div>
 
-  <div class="kpis" id="kpis">
-    <div class="kpi p1"><div class="n" id="k-p1">–</div><div class="l">Prioridad 1 · decidir</div></div>
-    <div class="kpi p2"><div class="n" id="k-p2">–</div><div class="l">Prioridad 2 · confirmar</div></div>
-    <div class="kpi"><div class="n" id="k-inc">–</div><div class="l">Expedientes con faltantes</div></div>
-    <div class="kpi"><div class="n" id="k-mov">–</div><div class="l">Movidos en la última corrida</div></div>
-    <div class="kpi"><div class="n" id="k-cand">–</div><div class="l">Candidatos a cliente</div></div>
-  </div>
-
-  <!-- TEMPORAL: avance de la organización de expedientes. Quitar esta sección (y pintarAvance/progreso) al terminar la migración. -->
-  <section id="secAvance">
-    <div class="sec-head"><h2>Avance de la organización</h2><span id="avEstado"></span><small class="ts" id="avHora"></small></div>
-    <div id="avCuerpo" class="vacio">Claude publica aquí el avance del análisis de los expedientes de SINIESTROS: bloques y archivos leídos, la etapa y lo que falta descargar. Se actualiza cada vez que Claude revisa la corrida.</div>
-    <div class="acciones">
-      <button class="btn" type="button" id="btnOrganizar" data-tarea="organizar">Ejecutar análisis</button>
-      <button class="btn sec" type="button" id="btnJuntar" data-tarea="juntar">Juntar zips nuevos</button>
-      <span class="muted" id="avNota">Las solicitudes las atiende Claude en su siguiente sesión.</span>
-    </div>
-    <div class="lista" id="avSolicitudes"></div>
-  </section>
-
-  <section id="secHecho">
-    <div class="sec-head"><h2>Lo que se hizo</h2><span id="hechoEtapa"></span><small class="ts" id="hechoHora"></small></div>
-    <div id="hechoCorrida" class="muted"></div>
-    <div id="hechoCuerpo" class="vacio">Aquí aparece el resumen de la organización de expedientes: cuántos archivos, clientes y eventos se encontraron, qué tipos de documento hay, qué se renombró o copió a la estructura estándar y qué expedientes tienen faltantes. Se llena cuando corre <code>cli.py organizar</code> o <code>cli.py semilla</code>.</div>
-  </section>
-
-  <div class="cols">
-    <section>
-      <div class="sec-head">
-        <h2>Pendientes</h2>
-        <div class="filtros" role="group" aria-label="Filtrar por prioridad">
-          <button type="button" data-f="todos" aria-pressed="true">Todos</button>
-          <button type="button" data-f="1" aria-pressed="false">Prioridad 1</button>
-          <button type="button" data-f="2" aria-pressed="false">Prioridad 2</button>
-          <button type="button" data-f="3" aria-pressed="false">Informativos</button>
-        </div>
-      </div>
-      <div class="lista" id="pendientes"><div class="vacio">Todavía no hay documentos pendientes. La rutina clasificadora publica aquí cada hora en horario hábil; cuando lo haga verás cada documento con su prioridad y podrás confirmar el cliente.</div></div>
+  <!-- ===================== USUARIO: lo del día a día ===================== -->
+  <div id="vista-usuario" role="tabpanel" aria-labelledby="tab-usuario" class="vista">
+    <section id="secResumen">
+      <div class="sec-head"><h2>Hoy</h2><small class="ts" id="resumenHora"></small></div>
+      <div id="resumenCuerpo" class="vacio">Cada mañana aparece aquí qué se hizo con los correos y archivos recibidos, y qué necesita tu atención.</div>
     </section>
 
-    <div style="display:flex;flex-direction:column;gap:18px;min-width:0">
-      <section id="secSoltar">
-        <div class="sec-head"><h2>Soltar archivos</h2><span class="muted">WhatsApp, escáner, lo que llegue fuera del correo</span></div>
-        <label class="zona" id="zona" for="archivos">
-          <strong>Arrastra aquí los archivos</strong> o toca para elegirlos.<br>PDF, fotos y XML. Entran al mismo circuito que el correo: OneDrive, registro, clasificación y expediente.
-          <input type="file" id="archivos" multiple accept=".pdf,.xml,.png,.jpg,.jpeg,image/*,application/pdf,text/xml">
-        </label>
-        <div class="acciones">
-          <label for="clienteEntrada" class="muted">Cliente (si lo sabes):</label>
-          <select id="clienteEntrada"><option value="">Que lo detecte Claude</option></select>
-        </div>
-        <div class="lista" id="entradas"></div>
-      </section>
-
+    <div class="cols">
       <section>
-        <div class="sec-head"><h2>Acciones</h2><small class="ts" id="ultimaCorrida"></small></div>
-        <div class="acciones">
-          <button class="btn" type="button" id="btnProcesar">Procesar ahora</button>
-          <span class="muted" id="procesarNota">Lo atiende la siguiente corrida de la rutina.</span>
-        </div>
+        <div class="sec-head"><h2>Por atender</h2><span class="muted" id="pendNota"></span></div>
+        <div class="lista" id="pendientes"><div class="vacio">Nada por atender. Cuando llegue un documento sin cliente claro, aparece aquí para que elijas a quién pertenece.</div></div>
       </section>
 
-      <section id="secResumen">
-        <div class="sec-head"><h2>Resumen del día</h2><small class="ts" id="resumenHora"></small></div>
-        <div id="resumenCuerpo" class="vacio">La rutina del resumen diario deja aquí lo mismo que envía por correo a las 8:00: la narrativa, los conteos y los expedientes con faltantes.</div>
-      </section>
+      <div class="columna">
+        <section id="secSoltar">
+          <div class="sec-head"><h2>Soltar archivos</h2><span class="muted">WhatsApp, escáner, lo que llegue fuera del correo</span></div>
+          <label class="zona" id="zona" for="archivos">
+            <strong>Arrastra aquí los archivos</strong> o toca para elegirlos.<br>PDF, fotos y XML. Se clasifican y se guardan en su expediente igual que los del correo.
+            <input type="file" id="archivos" multiple accept=".pdf,.xml,.png,.jpg,.jpeg,image/*,application/pdf,text/xml">
+          </label>
+          <div class="acciones">
+            <label for="clienteEntrada" class="muted">Cliente (si lo sabes):</label>
+            <select id="clienteEntrada"><option value="">Que lo detecte Claude</option></select>
+          </div>
+          <div class="lista" id="entradas"></div>
+        </section>
 
-      <section id="secActividad">
-        <div class="sec-head"><h2>Actividad</h2><span class="muted">últimos movimientos</span></div>
-        <div id="bitacora" class="vacio">Aquí se registra cada corrida: qué se movió, qué quedó en prioridad 1, qué falló.</div>
-      </section>
+        <section>
+          <div class="sec-head"><h2>Expedientes con faltantes</h2><span class="muted" id="expNota"></span></div>
+          <div class="lista" id="expedientes"><div class="vacio">Aquí verás los expedientes a los que les falta algún documento (CFDI, factura, receta o informe).</div></div>
+        </section>
 
-      <section>
-        <div class="sec-head"><h2>Expedientes</h2><span class="muted" id="expNota"></span></div>
-        <div class="lista" id="expedientes"><div class="vacio">Los expedientes agrupan los documentos de un cliente recibidos en 10 días y muestran qué falta (CFDI, factura PDF, receta, informe).</div></div>
-      </section>
+        <section>
+          <div class="sec-head"><h2>Clientes nuevos</h2></div>
+          <div class="lista" id="candidatos"><div class="vacio">Nombres leídos en documentos que todavía no están en el catálogo. Apruébalos para que sus documentos se clasifiquen solos.</div></div>
+        </section>
 
-      <section>
-        <div class="sec-head"><h2>Candidatos a cliente</h2></div>
-        <div class="lista" id="candidatos"><div class="vacio">Nombres leídos en documentos que no están en el catálogo. Apruébalos para que entren a la hoja Clientes.</div></div>
-      </section>
-
-      <section id="secPregunta">
-        <div class="sec-head"><h2>Pregunta al panel</h2></div>
-        <label for="pregunta" class="muted">Sobre lo pendiente y los expedientes, por ejemplo: "¿a quién le falta receta?"</label>
-        <textarea id="pregunta" rows="2"></textarea>
-        <div class="acciones"><button class="btn" type="button" id="btnPreguntar">Preguntar</button><span class="muted" id="preguntaNota"></span></div>
-        <div class="respuesta" id="respuesta" hidden></div>
-      </section>
+        <section id="secPregunta">
+          <div class="sec-head"><h2>Pregunta</h2></div>
+          <label for="pregunta" class="muted">Por ejemplo: "¿a quién le falta receta?"</label>
+          <textarea id="pregunta" rows="2"></textarea>
+          <div class="acciones"><button class="btn" type="button" id="btnPreguntar">Preguntar</button><span class="muted" id="preguntaNota"></span></div>
+          <div class="respuesta" id="respuesta" hidden></div>
+        </section>
+      </div>
     </div>
+  </div>
+
+  <!-- ===================== TÉCNICO: configuración e implementación ===================== -->
+  <div id="vista-tecnico" role="tabpanel" aria-labelledby="tab-tecnico" class="vista" hidden>
+    <section>
+      <div class="sec-head"><h2>Automatizaciones</h2><small class="ts" id="ultimaCorrida"></small></div>
+      <div class="semaforo" id="semaforo">
+        <span class="chip"><span class="dot"></span>Clasificador: sin datos</span>
+        <span class="chip"><span class="dot"></span>Resumen diario: sin datos</span>
+      </div>
+      <div class="kpis" id="kpis">
+        <div class="kpi p1"><div class="n" id="k-p1">–</div><div class="l">Prioridad 1 · decidir</div></div>
+        <div class="kpi p2"><div class="n" id="k-p2">–</div><div class="l">Prioridad 2 · confirmar</div></div>
+        <div class="kpi"><div class="n" id="k-inc">–</div><div class="l">Expedientes con faltantes</div></div>
+        <div class="kpi"><div class="n" id="k-mov">–</div><div class="l">Movidos en la última corrida</div></div>
+        <div class="kpi"><div class="n" id="k-cand">–</div><div class="l">Candidatos a cliente</div></div>
+      </div>
+      <div class="acciones">
+        <button class="btn sec" type="button" id="btnProcesar">Procesar ahora</button>
+        <span class="muted" id="procesarNota">Lo atiende la siguiente corrida.</span>
+      </div>
+    </section>
+
+    <!-- TEMPORAL: avance de la organización de expedientes. Quitar esta sección (y pintarAvance/progreso) al terminar la migración. -->
+    <section id="secAvance">
+      <div class="sec-head"><h2>Avance de la organización</h2><span id="avEstado"></span><small class="ts" id="avHora"></small></div>
+      <div id="avCuerpo" class="vacio">Claude publica aquí el avance del análisis de los expedientes de SINIESTROS: bloques y archivos leídos, la etapa y lo que falta descargar.</div>
+      <div class="acciones">
+        <button class="btn" type="button" id="btnOrganizar" data-tarea="organizar">Ejecutar análisis</button>
+        <button class="btn sec" type="button" id="btnJuntar" data-tarea="juntar">Juntar zips nuevos</button>
+        <span class="muted" id="avNota">Las solicitudes las atiende Claude en su siguiente sesión.</span>
+      </div>
+      <div class="lista" id="avSolicitudes"></div>
+    </section>
+
+    <section id="secHecho">
+      <div class="sec-head"><h2>Organización de expedientes</h2><span id="hechoEtapa"></span><small class="ts" id="hechoHora"></small></div>
+      <div id="hechoCorrida" class="muted"></div>
+      <div id="hechoCuerpo" class="vacio">Resumen de la organización de los expedientes históricos: archivos, clientes y eventos encontrados, tipos de documento, lo copiado a la estructura estándar y los expedientes con faltantes.</div>
+    </section>
+
+    <section id="secActividad">
+      <div class="sec-head"><h2>Actividad</h2><span class="muted">últimos movimientos de las automatizaciones</span></div>
+      <div id="bitacora" class="vacio">Aquí se registra cada corrida: qué se movió, qué quedó sin cliente, qué falló.</div>
+    </section>
   </div>
 </div>
 <div class="toast" id="toast" role="status"></div>
@@ -259,10 +268,17 @@ a{color:var(--accent)}
 
   function pintarPendientes(){
     const cont = $("pendientes");
-    let lista = estado.pendientes.slice().sort((a, b) => a.prioridad - b.prioridad || String(b.fecha + b.hora).localeCompare(String(a.fecha + a.hora)));
-    if (estado.filtro !== "todos") lista = lista.filter(x => String(x.prioridad) === estado.filtro);
-    if (!lista.length) { cont.innerHTML = `<div class="vacio">Nada en este filtro.</div>`; return; }
-    cont.innerHTML = lista.map(x => {
+    const todos = estado.pendientes.slice().sort((a, b) => a.prioridad - b.prioridad || String(b.fecha + b.hora).localeCompare(String(a.fecha + a.hora)));
+    const atender = todos.filter(x => x.prioridad <= 2 && !estado.confirmados.has(x.id));
+    const resto = todos.filter(x => !atender.includes(x));
+    $("pendNota").textContent = atender.length ? `${atender.length} por decidir` : "";
+    const html = (lista) => lista.map(itemPendiente).join("");
+    cont.innerHTML = (atender.length ? html(atender) : `<div class="vacio">Nada por atender. Todo lo recibido ya tiene cliente y expediente.</div>`)
+      + (resto.length ? `<details class="info"><summary>Ya clasificados (${resto.length})</summary><div class="lista">${html(resto)}</div></details>` : "");
+  }
+
+  function itemPendiente(x){
+    {
       const conf = estado.confirmados.has(x.id);
       const alertas = (x.alertas || []).map(a => `<div class="alerta">⚠ ${esc(a)}</div>`).join("");
       const cands = (x.candidatos || []).length ? `<span>candidato: ${esc(x.candidatos.join(" | "))}</span>` : "";
@@ -274,16 +290,16 @@ a{color:var(--accent)}
           ${x.motivo ? `<div class="m"><span>${esc(x.motivo)}</span></div>` : ""}
           ${alertas}
           <div class="acciones">${x.carpeta_url ? `<a class="btn-link min" href="${esc(x.carpeta_url)}" target="_blank" rel="noopener">Abrir carpeta</a>` : ""}${x.prioridad <= 2 && !conf ? `<select aria-label="Cliente para ${esc(x.id)}">${opcionesCatalogo(x.cliente || (x.candidatos || [])[0] || "")}</select><button class="btn" type="button" data-accion="confirmar">Confirmar cliente</button>` : ""}</div>
-          ${conf ? `<div class="m"><span>Confirmado. La rutina lo aplicará en su siguiente corrida.</span></div>` : ""}
+          ${conf ? `<div class="m"><span>Confirmado. Se guarda en su expediente en la siguiente corrida.</span></div>` : ""}
         </div></div>`;
-    }).join("");
+    }
   }
 
   function pintarExpedientes(){
     const cont = $("expedientes");
-    const lista = estado.expedientes.slice().sort((a, b) => ({incompleto:0, "en revisión":1, completo:2}[a.estado] - {incompleto:0, "en revisión":1, completo:2}[b.estado]) || b.dias_sin_movimiento - a.dias_sin_movimiento);
-    $("expNota").textContent = lista.length ? `${lista.filter(e => e.estado !== "completo").length} abiertos de ${lista.length}` : "";
-    if (!lista.length) return;
+    const lista = estado.expedientes.filter(e => e.estado !== "completo").sort((a, b) => b.dias_sin_movimiento - a.dias_sin_movimiento);
+    $("expNota").textContent = estado.expedientes.length ? `${lista.length} de ${estado.expedientes.length}` : "";
+    if (!lista.length) { if (estado.expedientes.length) cont.innerHTML = `<div class="vacio">Todos los expedientes abiertos tienen sus documentos.</div>`; return; }
     cont.innerHTML = lista.slice(0, 30).map(e => {
       const cls = e.estado === "en revisión" ? "revision" : e.estado;
       const faltan = (e.faltantes || []).length ? `Falta: ${esc(e.faltantes.join(", "))}` : "Documentos esenciales completos";
@@ -418,14 +434,24 @@ a{color:var(--accent)}
     const cont = $("resumenCuerpo");
     if (!r) return;
     cont.classList.remove("vacio");
-    $("resumenHora").textContent = `${horaCorta(r.hora)} · ${r.enviado ? "enviado a Lau" : "no enviado (modo propone)"}`;
+    $("resumenHora").textContent = `${r.fecha || horaCorta(r.hora)}${r.enviado ? " · también enviado por correo" : ""}`;
+    const hecho = r.hecho || [];
+    const porCliente = {};
+    hecho.forEach(h => { const k = h.cliente || "sin cliente"; porCliente[k] = porCliente[k] || { n: 0, eventos: new Set(), nuevos: 0 }; porCliente[k].n++; if (h.evento) porCliente[k].eventos.add(h.evento); if (h.nuevo) porCliente[k].nuevos++; });
+    const hechoHtml = Object.entries(porCliente).map(([c, v]) => `<li><b>${esc(c)}</b> · ${v.n} documento(s) en ${[...v.eventos].map(esc).join(", ")}${v.nuevos ? " · expediente nuevo" : ""}</li>`).join("");
+    const pid = (r.por_identificar || []).length;
     const conteos = Object.entries(r.conteos || {}).filter(([, n]) => n > 0).map(([k, n]) => `<span class="chip">${esc(k)}: <b>${n}</b></span>`).join(" ");
     const narr = (r.narrativa || "").split("\n").filter(l => l.trim()).map(l => `<p style="margin:0 0 6px">${esc(l)}</p>`).join("");
     const abiertos = (r.expedientes_abiertos || []).slice(0, 8).map(e => `<li><b>${esc(e.cliente)}</b> · ${esc(e.estado)} · falta ${esc((e.faltantes || []).join(", ") || "nada")} · ${e.dias_sin_movimiento} día(s)</li>`).join("");
     cont.innerHTML = `<div class="t" style="font-weight:600;margin-bottom:6px">${esc(r.asunto || "")}</div>
       ${narr ? `<div style="border-left:3px solid var(--accent);padding-left:10px;margin-bottom:8px">${narr}</div>` : ""}
       <div class="semaforo" style="margin-bottom:8px">${conteos}</div>
-      ${abiertos ? `<ul style="margin:0;padding-left:18px;font-size:.9rem">${abiertos}</ul>` : ""}`;
+      <div class="hecho-grid">
+        ${hechoHtml ? `<div><h3 style="font-size:.95rem;margin-bottom:4px">Lo que se hizo</h3><ul style="margin:0;padding-left:18px;font-size:.9rem">${hechoHtml}</ul></div>` : ""}
+        <div><h3 style="font-size:.95rem;margin-bottom:4px">Lo que hay que atender</h3><ul style="margin:0;padding-left:18px;font-size:.9rem">
+          ${pid ? `<li>${pid} documento(s) sin cliente: elige a quién pertenecen en <b>Por atender</b>.</li>` : ""}
+          ${abiertos || (pid ? "" : "<li>Nada pendiente.</li>")}</ul></div>
+      </div>`;
   }
 
   // TEMPORAL: avance de la organización (documento progreso/organizar que publica Claude)
@@ -506,6 +532,21 @@ a{color:var(--accent)}
     try { estado.uid = u ? await u.id() : null; } catch (e) { estado.uid = null; }
     suscribir();
   }
+  // Pestañas: Usuario (día a día) y Técnico (configuración e implementación)
+  function mostrarPestana(nombre, recordar){
+    ["usuario", "tecnico"].forEach(n => {
+      $("tab-" + n).setAttribute("aria-selected", String(n === nombre));
+      $("vista-" + n).hidden = n !== nombre;
+    });
+    if (recordar) { try { localStorage.setItem("pestana", nombre); } catch (e) {} }
+  }
+  ["usuario", "tecnico"].forEach(n => $("tab-" + n).addEventListener("click", () => mostrarPestana(n, true)));
+  let inicial = "usuario";
+  try { inicial = localStorage.getItem("pestana") || inicial; } catch (e) {}
+  if (location.hash === "#tecnico") inicial = "tecnico";
+  if (location.hash === "#usuario") inicial = "usuario";
+  mostrarPestana(inicial === "tecnico" ? "tecnico" : "usuario", false);
+
   estado.entradas = [];
   iniciar();
 })();

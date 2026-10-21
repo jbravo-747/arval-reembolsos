@@ -79,3 +79,18 @@ def test_resumen_del_dia(carpetas, tmp_path):
     assert r["conteos"]["Eventos nuevos hoy"] == 1
     ana = [e for e in r["expedientes_abiertos"] if e["cliente"] == "ANA MARIA PEREZ LOPEZ"][0]
     assert "receta" not in ana["faltantes"] and "CFDI (XML)" not in ana["faltantes"]
+
+
+def test_eventos_se_miden_por_llegada_no_por_fecha_del_documento(carpetas, tmp_path):
+    entrada, destino = carpetas
+    trabajo = tmp_path / "trabajo"
+    pt.correr(entrada, destino, trabajo, "aplica", usar_ocr=False, hoy=HOY)
+    # llega otro documento de Carlos con fecha vieja en el nombre: va al mismo evento porque llegó dos días después
+    c = entrada / "Clientes" / "Carlos Ruiz Soto" / "2026-10"
+    (c / "20261016_0900_ddd444_informe 2024-01-05.pdf").write_bytes(b"%PDF-1.4 roto otro")
+    panel = pt.correr(entrada, destino, trabajo, "aplica", usar_ocr=False, hoy=HOY)
+    nuevo = [p for p in panel["pendientes"] if p["id"].startswith("20261016_0900")][0]
+    assert "/2026-10_Reembolso 20261014/20240105_INFORME_01.pdf" in nuevo["destino"]
+    exp = [e for e in pt.expedientes_destino(destino, date(2026, 10, 16), pt.llegadas_por_evento(pt._cargar_estado(trabajo / "puente_estado.jsonl")))
+           if e["cliente"] == "CARLOS RUIZ SOTO"][0]
+    assert exp["dias_sin_movimiento"] == 0 and exp["ultimo"] == "2026-10-16"

@@ -89,14 +89,34 @@ def _fechas_evento(carpeta):
     return fechas
 
 
-def carpeta_evento(carpeta_cliente, fecha, en_corrida=None):
-    """Evento abierto del cliente (algún documento a VENTANA_DIAS o menos) o uno nuevo AAAA-MM_Reembolso AAAAMMDD.
+def llegadas_por_evento(estado):
+    """{ruta relativa del evento: [fechas de llegada]} de lo que el puente ya guardó (la fecha del correo, no la del documento)."""
+    salida = {}
+    for r in estado.values():
+        if r.get("resultado") == "clasificado" and r.get("destino") and r.get("fecha_recepcion"):
+            try:
+                f = date.fromisoformat(str(r["fecha_recepcion"])[:10])
+            except ValueError:
+                continue
+            salida.setdefault(Path(r["destino"]).parent.as_posix(), []).append(f)
+    return salida
+
+
+def _fechas_de(ev, destino, llegadas):
+    """Fechas de movimiento de un evento: las llegadas registradas por el puente o, en expedientes históricos,
+    las fechas de los documentos (AAAAMMDD del nombre estándar)."""
+    rel = ev.relative_to(destino).as_posix() if destino else ""
+    return list((llegadas or {}).get(rel, [])) or _fechas_evento(ev)
+
+
+def carpeta_evento(carpeta_cliente, fecha, en_corrida=None, destino=None, llegadas=None):
+    """Evento abierto del cliente (movimiento a VENTANA_DIAS o menos) o uno nuevo AAAA-MM_Reembolso AAAAMMDD.
     en_corrida: {nombre de evento: [fechas]} ya asignados en esta corrida (aún no copiados en modo propone)."""
     fechas = {}
     if carpeta_cliente.exists():
         for ev in carpeta_cliente.iterdir():
             if ev.is_dir() and not ev.name.startswith("_"):
-                fechas[ev.name] = _fechas_evento(ev)
+                fechas[ev.name] = _fechas_de(ev, destino, llegadas)
     for nombre, lista in (en_corrida or {}).items():
         fechas.setdefault(nombre, []).extend(lista)
     candidatos = []
@@ -147,7 +167,7 @@ def correr(entrada, destino, trabajo, modo="propone", usar_ocr=True, extra_catal
         if base.exists():
             archivos += sorted(p for p in base.rglob("*") if p.is_file())
     conteo, resultados = Counter(), []
-    corrida = {"reservados": set(), "eventos": {}}   # nombres y eventos asignados en esta corrida
+    corrida = {"reservados": set(), "eventos": {}, "llegadas": llegadas_por_evento(estado)}   # lo asignado en esta corrida
     with estado_ruta.open("a", encoding="utf-8") as fh:
         for p in archivos:
             rel = p.relative_to(entrada).as_posix()
@@ -206,7 +226,7 @@ def _procesar(p, rel, st, entrada, destino, catalogo, cartera_de, registro, conf
         cliente, por = c_texto, "nombre en el documento"
     fecha_nombre = f_doc or fecha_en_nombre(p.name[14:]) or f_rec or hoy
     r.update(tipo=tipo, senal_tipo=senal, metodo=metodo, fecha_doc=str(f_doc or ""), cliente=cliente, cliente_por=por,
-             candidatos=candidatos[:3], motivo=como if not cliente else por)
+             candidatos=[] if cliente else candidatos[:3], motivo=como if not cliente else por)   # candidatos solo si falta cliente
     if not cliente:
         destino_rel = f"{POR_IDENTIFICAR}/{limpiar(p.name, 150)}"
         r.update(resultado="por identificar", destino=destino_rel, prioridad=1 if candidatos or c_texto else 3)
@@ -215,7 +235,7 @@ def _procesar(p, rel, st, entrada, destino, catalogo, cartera_de, registro, conf
         carpeta_cliente = destino / limpiar(cartera) / limpiar(cliente)
         f_evento = f_rec or fecha_nombre
         en_corrida = corrida["eventos"].setdefault(carpeta_cliente, {})
-        evento, nuevo = carpeta_evento(carpeta_cliente, f_evento, en_corrida)
+        evento, nuevo = carpeta_evento(carpeta_cliente, f_evento, en_corrida, destino, corrida["llegadas"])
         en_corrida.setdefault(evento, []).append(f_evento)
         carpeta = carpeta_cliente / evento
         nombre = _siguiente_nombre(carpeta, f"{fecha_nombre:%Y%m%d}_{TIPO_CORTO.get(tipo, 'DOC')}", ext, corrida["reservados"])
@@ -232,7 +252,7 @@ def _procesar(p, rel, st, entrada, destino, catalogo, cartera_de, registro, conf
 TIPO_DE_CORTO = {v: k for k, v in TIPO_CORTO.items()}
 
 
-def expedientes_destino(destino, hoy=None):
+def expedientes_destino(destino, hoy=None, llegadas=None):
     """Expedientes según las carpetas de /Arval: por evento, tipos presentes (por el nombre estándar) y faltantes."""
     from .expedientes import ETIQUETAS, REQUISITOS
     destino, hoy = Path(destino), hoy or date.today()
@@ -247,7 +267,7 @@ def expedientes_destino(destino, hoy=None):
                     m = re.match(r"20\d{6}_([A-Z\-]+)_\d+", f.name)
                     if f.is_file() and m:
                         tipos.add(TIPO_DE_CORTO.get(m[1], "Otro"))
-                fechas = _fechas_evento(ev)
+                fechas = _fechas_de(ev, destino, llegadas)
                 if not fechas:
                     continue
                 faltantes = [ETIQUETAS[k] for k, aceptados in REQUISITOS.items() if not tipos & set(aceptados)]
@@ -264,7 +284,7 @@ def resumen_dia(trabajo, destino, dia=None):
     del_dia = [r for r in estado.values() if str(r.get("hora_proceso", "")).startswith(str(dia)) and r.get("resultado") != "ignorado"]
     clasificados = [r for r in del_dia if r["resultado"] == "clasificado"]
     sin_cliente = [r for r in estado.values() if r.get("resultado") == "por identificar"]
-    abiertos = [e for e in expedientes_destino(destino, dia) if e["estado"] == "incompleto"]
+    abiertos = [e for e in expedientes_destino(destino, dia, llegadas_por_evento(estado)) if e["estado"] == "incompleto"]
     conteos = {"Documentos clasificados hoy": len(clasificados), "Eventos nuevos hoy": sum(1 for r in clasificados if r.get("evento_nuevo")),
                "Sin cliente (por identificar)": len(sin_cliente), "Expedientes con faltantes": len(abiertos)}
     asunto = (f"Reembolsos {dia:%d/%m/%Y}: {len(clasificados)} clasificados, {len(sin_cliente)} sin cliente, "
