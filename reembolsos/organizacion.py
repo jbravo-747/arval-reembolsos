@@ -25,7 +25,7 @@ TIPO_CORTO = {"CFDI factura": "CFDI", "CFDI recibo de honorarios": "CFDI-HON", "
               "Receta": "RECETA", "Informe médico": "INFORME", "Estudio o resultado": "ESTUDIO", "Identificación": "ID",
               "Operación de seguro (no reembolso)": "SEGURO", "Formato de reclamación": "RECLAMACION",
               "Comprobante de pago": "PAGO", "Otro": "DOC"}
-ANALISIS_VERSION = 2   # sube cuando cambia cómo se analiza un archivo: la caché de otra versión se vuelve a calcular
+ANALISIS_VERSION = 3   # sube cuando cambia cómo se analiza un archivo: la caché de otra versión se vuelve a calcular
 EXT_DICOM = {".dcm"}
 SIN_EVENTO = "_Sin evento"
 CARPETA_DICOM = "Imagenes DICOM"
@@ -124,6 +124,7 @@ def _analizar_archivo(partes, p, catalogo, leer, paginas_max, usar_ocr=True):
         info["metodo"] = "Receptor CFDI" if (nombre or rfc) else "XML sin CFDI"
         if nombre or rfc:
             tipo = "CFDI factura"
+            info["datos"] = {"cfdi": cl.datos_cfdi(p)}
             c, como = catalogo.resolver(f"{nombre} {rfc}")
             if c and como == "exacta":
                 info["cliente_contenido"] = c
@@ -143,6 +144,7 @@ def _analizar_archivo(partes, p, catalogo, leer, paginas_max, usar_ocr=True):
             c, como = catalogo.resolver(texto)
             if c and como == "exacta":
                 info["cliente_contenido"] = c
+            info["datos"] = contenido.identificadores(texto)   # RFC, póliza, siniestro, aseguradora, personas, correos
         else:
             info["metodo"] = metodo or ("sin texto: requiere lectura del agente" if ext == ".pdf" or ext in cl.EXT_IMAGEN else "formato no leído")
             info["requiere_lectura"] = ext == ".pdf" or ext in cl.EXT_IMAGEN

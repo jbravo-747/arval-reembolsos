@@ -132,3 +132,84 @@ def ocr(ruta, paginas_max=2, idioma="es-MX", dpi=200):
     else:
         imagenes = [Image.open(ruta).convert("RGB")]
     return " ".join(winocr.recognize_pil_sync(im, idioma).get("text", "") for im in imagenes)
+
+
+# ---------- identificadores para la base de asegurados (no clínicos) ----------
+ASEGURADORAS = [
+    ("GNP", ["GRUPO NACIONAL PROVINCIAL", "GNP SEGUROS", "GNP"]), ("AXA", ["AXA SEGUROS", "AXA"]), ("MetLife", ["METLIFE"]),
+    ("Mapfre", ["MAPFRE"]), ("Allianz", ["ALLIANZ"]), ("BUPA", ["BUPA"]), ("Plan Seguro", ["PLAN SEGURO"]),
+    ("Seguros Monterrey New York Life", ["MONTERREY NEW YORK LIFE", "SEGUROS MONTERREY"]), ("SURA", ["SEGUROS SURA"]),
+    ("Inbursa", ["SEGUROS INBURSA", "INBURSA"]), ("Zurich", ["ZURICH"]), ("Banorte", ["SEGUROS BANORTE"]), ("HDI", ["HDI SEGUROS"]),
+    ("Chubb", ["CHUBB"]), ("Atlas", ["SEGUROS ATLAS"]), ("General de Salud", ["GENERAL DE SALUD"]), ("Qualitas", ["QUALITAS"]),
+]
+ROLES = [("titular", ["ASEGURADO TITULAR", "NOMBRE DEL TITULAR", "TITULAR"]), ("contratante", ["CONTRATANTE"]),
+         ("afectado", ["ASEGURADO AFECTADO", "NOMBRE DEL AFECTADO", "AFECTADO", "NOMBRE DEL PACIENTE", "PACIENTE"]),
+         ("asegurado", ["NOMBRE DEL ASEGURADO", "ASEGURADO"])]
+_CORTE = {"RFC", "CURP", "FECHA", "DOMICILIO", "POLIZA", "NO", "NUM", "NUMERO", "FOLIO", "EDAD", "SEXO", "PARENTESCO", "TELEFONO",
+          "CORREO", "CERTIFICADO", "FIRMA", "DIRECCION", "CALLE", "CP", "COLONIA", "GENERO", "SINIESTRO", "NACIMIENTO", "MEDICO", "EMAIL"}
+_NO_NOMBRE = {"DE", "DEL", "LA", "EL", "LOS", "Y", "S", "A", "SA", "CV", "SEGUROS", "GNP", "AXA", "HOSPITAL", "CLINICA", "DATOS",
+              "INFORMACION", "MISMO", "MISMA", "OTRO", "TITULAR", "AFECTADO", "ASEGURADO", "PACIENTE", "CONTRATANTE", "NOMBRE", "COMPLETO"}
+_RFC_GENERICOS = {"XAXX010101000", "XEXX010101000"}
+
+
+def _rfcs(t):
+    salida = []
+    for m in re.finditer(r"\b([A-Z&]{3,4})(\d{2})(\d{2})(\d{2})([A-Z0-9]{3})\b", t):
+        rfc = m.group(0)
+        if 1 <= int(m[3]) <= 12 and 1 <= int(m[4]) <= 31 and rfc not in _RFC_GENERICOS and rfc not in salida:
+            salida.append(rfc)
+    return salida[:8]
+
+
+def _numeros(t, etiqueta):
+    salida = []
+    for m in re.finditer(etiqueta + r"(?: ?(?:NO|NUM|NUMERO|N|#)\.?)? ?[:\-]? ?([A-Z0-9][A-Z0-9\-/]{4,24})", t):
+        v = m[1].strip("-/")
+        if sum(c.isdigit() for c in v) >= 4 and v not in salida:
+            salida.append(v)
+    return salida[:5]
+
+
+def identificadores(texto):
+    """RFC, pólizas, siniestros, aseguradora, personas por rol y correos encontrados en el texto. Nada clínico."""
+    t = _mayus(texto)
+    n = normalizar(texto)
+    aseguradora, mejor = "", 0
+    for nombre, claves in ASEGURADORAS:
+        k = sum(len(_patron(c).findall(n)) for c in claves)
+        if k > mejor:
+            aseguradora, mejor = nombre, k
+    personas = []
+    for rol, etiquetas in ROLES:
+        for etq in etiquetas:
+            for m in re.finditer(r"\b" + etq + r"\b ?((?:[A-Z]{2,} ?){2,7})", n):
+                palabras = []
+                for w in m[1].split():
+                    if w in _CORTE:
+                        break
+                    palabras.append(w)
+                while palabras and palabras[0] in _NO_NOMBRE:
+                    palabras.pop(0)
+                if 2 <= len(palabras) <= 5 and not any(w in _NO_NOMBRE for w in palabras):
+                    par = [rol, " ".join(palabras)]
+                    if par not in personas:
+                        personas.append(par)
+    correos = sorted({c.lower() for c in re.findall(r"[\w.\-+]+@[\w\-]+(?:\.[\w\-]+)+", str(texto or ""))})[:5]
+    return {"rfcs": _rfcs(t), "polizas": _numeros(t, r"\bPOLIZA"), "siniestros": _numeros(t, r"\bSINIESTRO"),
+            "aseguradora": aseguradora, "personas": personas[:6], "correos": correos}
+
+
+_VOCALES = "AEIOU"
+_PARTICULAS = {"DE", "DEL", "LA", "LAS", "LOS", "Y", "MC", "MAC", "VAN", "VON", "DA", "DI"}
+
+
+def prefijos_rfc(nombre):
+    """Posibles 4 letras de RFC de persona física para un nombre completo, en los dos órdenes habituales
+    (nombre(s) + apellidos o apellidos + nombre(s)). Sirve para reconocer el RFC del asegurado entre los de un documento."""
+    w = [x for x in normalizar(nombre).split() if x not in _PARTICULAS]
+    if len(w) < 3:
+        return set()
+    def armar(paterno, materno, nombre1):
+        vocal = next((c for c in paterno[1:] if c in _VOCALES), "X")
+        return paterno[0] + vocal + materno[0] + nombre1[0]
+    return {armar(w[-2], w[-1], w[0]), armar(w[0], w[1], w[2])}

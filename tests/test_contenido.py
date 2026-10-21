@@ -23,3 +23,13 @@ def test_fecha_por_texto():
     assert fecha_por_texto("Consulta 15-MAR-2026", HOY) == date(2026, 3, 15)
     assert fecha_por_texto("Vigente al 01/01/2030", HOY) is None          # fechas futuras no cuentan
     assert fecha_por_texto("sin fechas", HOY) is None
+
+
+def test_identificadores_y_prefijos_rfc():
+    from reembolsos.contenido import identificadores, prefijos_rfc
+    d = identificadores("GNP Seguros  Póliza No. 12345678  Número de siniestro: S-2026-001234  Asegurado titular: JUAN PEREZ LOPEZ "
+                        "RFC PELJ800101AB1  Afectado: MARIA PEREZ GARCIA Parentesco hija  correo juan.perez@ejemplo.com  XAXX010101000")
+    assert d["rfcs"] == ["PELJ800101AB1"] and d["polizas"] == ["12345678"] and d["siniestros"] == ["S-2026-001234"]
+    assert d["aseguradora"] == "GNP" and ["titular", "JUAN PEREZ LOPEZ"] in d["personas"] and ["afectado", "MARIA PEREZ GARCIA"] in d["personas"]
+    assert d["correos"] == ["juan.perez@ejemplo.com"]
+    assert "PELJ" in prefijos_rfc("JUAN PEREZ LOPEZ") and "PELJ" in prefijos_rfc("PEREZ LOPEZ JUAN")

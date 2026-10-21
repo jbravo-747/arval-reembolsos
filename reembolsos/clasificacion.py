@@ -31,6 +31,24 @@ def receptor_cfdi(ruta):
     return nombre, rfc, raiz.get("Total", ""), raiz.get("Fecha", "")
 
 
+def datos_cfdi(ruta):
+    """Emisor, receptor, total, fecha y UUID de un CFDI; {} si no es CFDI."""
+    try:
+        raiz = ET.parse(ruta).getroot()
+    except ET.ParseError:
+        return {}
+    d = {"total": raiz.get("Total", ""), "fecha": raiz.get("Fecha", "")[:10]}
+    for el in raiz.iter():
+        etiqueta = el.tag.split("}")[-1]
+        if etiqueta == "Emisor":
+            d.update(emisor=el.get("Nombre", ""), rfc_emisor=el.get("Rfc", "").upper())
+        elif etiqueta == "Receptor":
+            d.update(receptor=el.get("Nombre", ""), rfc_receptor=el.get("Rfc", "").upper())
+        elif etiqueta == "TimbreFiscalDigital":
+            d["uuid"] = el.get("UUID", "").upper()
+    return d if d.get("rfc_receptor") or d.get("rfc_emisor") else {}
+
+
 def texto_pdf(ruta, paginas_max=3):
     """Capa de texto de un PDF (vacía si es escaneado o si PyMuPDF no está instalado)."""
     try:
