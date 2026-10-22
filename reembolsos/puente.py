@@ -53,6 +53,33 @@ def catalogo_destino(destino, extra=None):
     return Catalogo(filas)
 
 
+TIPOS_REMITENTE_NO_CLIENTE = {"aseguradora", "escaner", "aviso", "ignorar"}
+NO_REEMBOLSO = ("NOMINA", "RECIBOS DE NOMINA")   # remitentes internos cuyos documentos no son reembolsos
+
+
+def remitentes_catalogo(ruta_xlsx):
+    """{correo: {"nombre", "tipo"}} de tblClientes (solo lectura). Vacío si no se puede abrir."""
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(ruta_xlsx, read_only=False, data_only=True)
+    except Exception:  # noqa: BLE001
+        return {}
+    for ws in wb.worksheets:
+        for tabla in ws.tables.values():
+            if tabla.name != "tblClientes":
+                continue
+            filas = list(ws[tabla.ref])
+            enc = [str(c.value or "") for c in filas[0]]
+            salida = {}
+            for fila in filas[1:]:
+                d = dict(zip(enc, (c.value for c in fila)))
+                correo = str(d.get("Correo") or "").strip().lower()
+                if correo:
+                    salida[correo] = {"nombre": str(d.get("NombreCliente") or "").strip(), "tipo": str(d.get("Tipo") or "").strip().lower()}
+            return salida
+    return {}
+
+
 def registro_excel(ruta_xlsx):
     """{NombreGuardado: {remitente, asunto, fecha, hora}} leído de tblRegistro (solo lectura). Vacío si no se puede abrir."""
     try:
@@ -70,7 +97,8 @@ def registro_excel(ruta_xlsx):
             for fila in filas[1:]:
                 d = dict(zip(enc, (c.value for c in fila)))
                 if d.get("NombreGuardado"):
-                    salida[str(d["NombreGuardado"])] = {"remitente": str(d.get("Remitente") or ""), "asunto": str(d.get("Asunto") or ""),
+                    salida[str(d["NombreGuardado"])] = {"remitente": str(d.get("Remitente") or "").strip().lower(), "asunto": str(d.get("Asunto") or ""),
+                                                        "cliente": str(d.get("Cliente") or ""),
                                                         "fecha": str(d.get("FechaRecepcion") or ""), "hora": str(d.get("HoraRecepcion") or "")}
             return salida
     return {}
@@ -196,6 +224,10 @@ def correr(entrada, destino, trabajo, modo="propone", usar_ocr=True, extra_catal
     catalogo = catalogo_destino(destino, extra_catalogo)
     cartera_de = {c.nombre: c.cartera for c in catalogo.clientes}
     registro = registro_excel(entrada / "Control_Reembolsos.xlsx")
+    remitentes = remitentes_catalogo(entrada / "Control_Reembolsos.xlsx")
+    for meta in registro.values():   # el remitente que después se dio de alta con nombre identifica también sus correos anteriores
+        if meta.get("cliente") and meta.get("remitente") and not (remitentes.get(meta["remitente"]) or {}).get("nombre"):
+            remitentes[meta["remitente"]] = {"nombre": meta["cliente"], "tipo": ""}
     confirmadas = {c["archivo"]: c["cliente"] for c in (confirmaciones or []) if c.get("archivo") and c.get("cliente")}
     hoy = hoy or date.today()
 
@@ -216,7 +248,7 @@ def correr(entrada, destino, trabajo, modo="propone", usar_ocr=True, extra_catal
             if hecho and not (confirmado and previo.get("resultado") == "por identificar"):
                 conteo["ya procesados"] += 1
                 continue
-            r = _procesar(p, rel, st, entrada, destino, catalogo, cartera_de, registro, confirmado, modo, usar_ocr, hoy, corrida)
+            r = _procesar(p, rel, st, entrada, destino, catalogo, cartera_de, registro, confirmado, modo, usar_ocr, hoy, corrida, remitentes)
             r["modo"] = modo
             conteo[r["resultado"]] += 1
             resultados.append(r)
@@ -228,7 +260,7 @@ def correr(entrada, destino, trabajo, modo="propone", usar_ocr=True, extra_catal
     return panel
 
 
-def _procesar(p, rel, st, entrada, destino, catalogo, cartera_de, registro, confirmado, modo, usar_ocr, hoy, corrida):
+def _procesar(p, rel, st, entrada, destino, catalogo, cartera_de, registro, confirmado, modo, usar_ocr, hoy, corrida, remitentes=None):
     ext = p.suffix.lower()
     meta = registro.get(p.name, {})
     f_rec, hora = _fecha_recepcion(p.name)
@@ -236,6 +268,11 @@ def _procesar(p, rel, st, entrada, destino, catalogo, cartera_de, registro, conf
          "fecha_recepcion": str(f_rec or meta.get("fecha") or ""), "hora": hora or meta.get("hora", ""), "hora_proceso": datetime.now().isoformat(timespec="seconds")}
     if ext in IGNORAR_EXT or (ext in cl.EXT_IMAGEN and st.st_size < MIN_IMAGEN):
         return {**r, "resultado": "ignorado", "motivo": "firma, logo o formato sin documento"}
+    rem = (remitentes or {}).get(r["remitente"]) or {}
+    partes0 = Path(rel).parts
+    carpeta_pa = partes0[1] if partes0[0] == "Clientes" and len(partes0) >= 3 else ""
+    if any(x in normalizar(rem.get("nombre") or carpeta_pa) for x in NO_REEMBOLSO):
+        return {**r, "resultado": "ignorado", "motivo": "remitente interno: no es reembolso"}
     # Cliente: confirmado por Lau en el panel > carpeta donde lo dejó Power Automate (remitente conocido) > contenido
     partes = Path(rel).parts
     cliente_pa = partes[1] if partes[0] == "Clientes" and len(partes) >= 3 else None
@@ -255,8 +292,12 @@ def _procesar(p, rel, st, entrada, destino, catalogo, cartera_de, registro, conf
     candidatos = cl.candidatos_en_texto(texto) if texto.strip() else []
     del texto   # el contenido no sale de esta función
     cliente, por = None, ""
+    nombre_rem = rem.get("nombre") if rem.get("tipo") not in TIPOS_REMITENTE_NO_CLIENTE else ""
     if confirmado:
         cliente, por = confirmado, "confirmado en el panel"
+    elif nombre_rem:
+        c, _ = catalogo.resolver(nombre_rem)
+        cliente, por = (c or nombre_rem.upper()), "remitente del catálogo"
     elif cliente_pa:
         c, _ = catalogo.resolver(cliente_pa)
         cliente, por = (c or cliente_pa), "remitente (Power Automate)"
@@ -339,7 +380,7 @@ def _panel(resultados, conteo, modo):
     hora = datetime.now().astimezone().isoformat(timespec="seconds")
     utiles = [r for r in resultados if r["resultado"] != "ignorado"]
     pendientes = [{"id": r["nombre"], "cliente": r.get("cliente"), "tipo": r.get("tipo"), "prioridad": r.get("prioridad", 3),
-                   "confianza": {"confirmado en el panel": "Alta", "remitente (Power Automate)": "Alta", "nombre en el documento": "Media"}.get(r.get("cliente_por"), "Ninguna"),
+                   "confianza": {"confirmado en el panel": "Alta", "remitente del catálogo": "Alta", "remitente (Power Automate)": "Alta", "nombre en el documento": "Media"}.get(r.get("cliente_por"), "Ninguna"),
                    "estado": "Recibido" if r["resultado"] == "clasificado" else "Cliente desconocido", "candidatos": r.get("candidatos", []),
                    "motivo": r.get("motivo", ""), "alertas": [], "remitente": r["remitente"], "asunto": r["asunto"],
                    "fecha": r["fecha_recepcion"], "hora": r["hora"], "destino": r.get("destino", "")} for r in utiles]

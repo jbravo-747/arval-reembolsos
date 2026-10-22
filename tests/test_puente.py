@@ -109,3 +109,30 @@ def test_zip_se_abre_y_cada_archivo_se_clasifica(carpetas, tmp_path):
     assert sorted(p["id"] for p in del_zip) == ["20261019_1148_abc123_factura.xml", "20261019_1148_abc123_receta 1.pdf"]
     assert all(p["cliente"] == "CARLOS RUIZ SOTO" for p in del_zip)
     assert any(f.name.endswith("_CFDI_01.xml") for f in (destino / "CARTERA UNO" / "CARLOS RUIZ SOTO").rglob("*"))
+
+
+def test_cliente_por_remitente_del_catalogo_y_nomina_ignorada(carpetas, tmp_path):
+    import openpyxl
+    from openpyxl.worksheet.table import Table
+    entrada, destino = carpetas
+    (entrada / "_Por identificar" / "20261019_1150_aaa999_gastos.pdf").write_bytes(b"%PDF-1.4 roto g")
+    n = entrada / "Clientes" / "Recibos de nomina sistema Arval" / "2026-10"
+    n.mkdir(parents=True)
+    (n / "20261020_1500_bbb999_SECFD.xml").write_text("<x/>", encoding="utf-8")
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Clientes"
+    ws.append(["Correo", "NombreCliente", "Notas", "Tipo", "Alias", "RFC"])
+    ws.append(["carlos@ejemplo.com", "Carlos Ruiz Soto", "", "", "", ""])
+    ws.append(["escaner@ejemplo.com", "Escaner Arval", "", "Escaner", "", ""])
+    ws.add_table(Table(displayName="tblClientes", ref="A1:F3"))
+    wr = wb.create_sheet("Registro")
+    wr.append(["FechaRecepcion", "HoraRecepcion", "Remitente", "Asunto", "NombreGuardado", "Cliente"])
+    wr.append(["2026-10-19", "11:50", "Carlos@Ejemplo.com", "Solicitud", "20261019_1150_aaa999_gastos.pdf", ""])
+    wr.append(["2026-10-13", "11:00", "escaner@ejemplo.com", "Escaneo", "20261013_1100_bbb222_escaneo.pdf", ""])
+    wr.add_table(Table(displayName="tblRegistro", ref="A1:F3"))
+    wb.save(entrada / "Control_Reembolsos.xlsx")
+    panel = pt.correr(entrada, destino, tmp_path / "trabajo", "propone", usar_ocr=False, hoy=HOY)
+    por = {p["id"]: p for p in panel["pendientes"]}
+    assert por["20261019_1150_aaa999_gastos.pdf"]["cliente"] == "CARLOS RUIZ SOTO"
+    assert por["20261019_1150_aaa999_gastos.pdf"]["confianza"] == "Alta"
+    assert por["20261013_1100_bbb222_escaneo.pdf"]["cliente"] is None        # el escáner no identifica al cliente
+    assert "20261020_1500_bbb999_SECFD.xml" not in por and panel["conteo"]["ignorado"] >= 2
