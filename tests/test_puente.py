@@ -94,3 +94,18 @@ def test_eventos_se_miden_por_llegada_no_por_fecha_del_documento(carpetas, tmp_p
     exp = [e for e in pt.expedientes_destino(destino, date(2026, 10, 16), pt.llegadas_por_evento(pt._cargar_estado(trabajo / "puente_estado.jsonl")))
            if e["cliente"] == "CARLOS RUIZ SOTO"][0]
     assert exp["dias_sin_movimiento"] == 0 and exp["ultimo"] == "2026-10-16"
+
+
+def test_zip_se_abre_y_cada_archivo_se_clasifica(carpetas, tmp_path):
+    import zipfile
+    entrada, destino = carpetas
+    z = entrada / "Clientes" / "Carlos Ruiz Soto" / "2026-10" / "20261019_1148_abc123_Gastos.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.writestr("carpeta/receta 1.pdf", b"%PDF-1.4 roto a")
+        zf.writestr("factura.xml", CFDI.replace("ANA MARIA PEREZ LOPEZ", "CARLOS RUIZ SOTO"))
+        zf.writestr("__MACOSX/._factura.xml", b"x")
+    panel = pt.correr(entrada, destino, tmp_path / "trabajo", "aplica", usar_ocr=False, hoy=HOY)
+    del_zip = [p for p in panel["pendientes"] if p["id"].startswith("20261019_1148_abc123_")]
+    assert sorted(p["id"] for p in del_zip) == ["20261019_1148_abc123_factura.xml", "20261019_1148_abc123_receta 1.pdf"]
+    assert all(p["cliente"] == "CARLOS RUIZ SOTO" for p in del_zip)
+    assert any(f.name.endswith("_CFDI_01.xml") for f in (destino / "CARTERA UNO" / "CARLOS RUIZ SOTO").rglob("*"))

@@ -137,6 +137,44 @@ def _siguiente_nombre(carpeta, base, ext, reservados):
     return f"{base}_{n:02d}{ext}"
 
 
+def expandir_zips(archivos, entrada, trabajo, registro):
+    """[(Path, ruta relativa)] donde cada ZIP se cambia por sus archivos: se extraen (solo el nombre, nunca las rutas del
+    ZIP) en trabajo/zips/<zip>/ con el prefijo de Power Automate del ZIP, para clasificarlos uno por uno. El remitente y
+    el asunto del ZIP pasan a cada archivo. Un ZIP dañado queda como archivo normal (se ignora)."""
+    import zipfile
+    salida = []
+    for p in archivos:
+        rel = p.relative_to(entrada).as_posix()
+        if p.suffix.lower() != ".zip":
+            salida.append((p, rel))
+            continue
+        try:
+            z = zipfile.ZipFile(p)
+        except zipfile.BadZipFile:
+            salida.append((p, rel))
+            continue
+        m = re.match(r"(20\d{6}_\d{4}_[0-9a-f]+_)", p.name)
+        prefijo = m[1] if m else ""
+        carpeta = Path(trabajo) / "zips" / p.stem
+        usados = Counter()
+        with z:
+            for info in z.infolist():
+                nombre = Path(info.filename.replace("\\", "/")).name
+                if info.is_dir() or not nombre or nombre.startswith((".", "__MACOSX")) or "__MACOSX" in info.filename:
+                    continue
+                usados[nombre] += 1
+                base = limpiar(nombre, 150) if usados[nombre] == 1 else f"{usados[nombre]}_{limpiar(nombre, 140)}"
+                destino = carpeta / (prefijo + base)
+                if not destino.exists():
+                    carpeta.mkdir(parents=True, exist_ok=True)
+                    with z.open(info) as src, open(destino, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                if p.name in registro:
+                    registro[destino.name] = registro[p.name]
+                salida.append((destino, f"{rel}/{base}"))
+    return salida
+
+
 def _cargar_estado(ruta):
     estado = {}
     if Path(ruta).exists():
@@ -166,11 +204,11 @@ def correr(entrada, destino, trabajo, modo="propone", usar_ocr=True, extra_catal
         base = entrada / sub
         if base.exists():
             archivos += sorted(p for p in base.rglob("*") if p.is_file())
+    archivos = expandir_zips(archivos, entrada, trabajo, registro)
     conteo, resultados = Counter(), []
     corrida = {"reservados": set(), "eventos": {}, "llegadas": llegadas_por_evento(estado)}   # lo asignado en esta corrida
     with estado_ruta.open("a", encoding="utf-8") as fh:
-        for p in archivos:
-            rel = p.relative_to(entrada).as_posix()
+        for p, rel in archivos:
             st = p.stat()
             previo = estado.get(rel)
             confirmado = confirmadas.get(p.name)
