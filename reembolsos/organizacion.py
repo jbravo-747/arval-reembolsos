@@ -210,6 +210,8 @@ def analizar(raiz, leer=True, paginas_max=3, cache=None, bitacora=None, progreso
                 por_ruta[ruta] = info
                 nuevos += 1
                 avance["errores_lectura"] += info["metodo"].startswith("error al leer")
+                if nuevos % 25 == 0:   # en clientes grandes, avisar también dentro del bloque
+                    publicar_avance(ultimo_bloque=f"{bloque.split('/')[-1]} ({nuevos} de {len(lista)})")
                 if fh:
                     fh.write(json.dumps(info, ensure_ascii=False) + "\n"); fh.flush()
             if nuevos:
