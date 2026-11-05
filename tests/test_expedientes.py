@@ -47,3 +47,17 @@ def test_borrador_solicitud():
     e = {"cliente": "Ana", "ultimo": "2026-10-05", "faltantes": ["receta", "informe médico"]}
     html = ex.texto_solicitud_faltantes(e)
     assert "receta y informe médico" in html and "Ana" in html
+
+
+def test_expediente_sin_reembolso_no_exige_nada_y_la_poliza_cuenta():
+    from reembolsos.expedientes import agrupar
+    registros = [
+        {"Cliente": "ANA RUIZ", "FechaRecepcion": "2026-11-01", "TipoDocumento": "Operación de seguro (no reembolso)", "Estado": "No es reembolso"},
+        {"Cliente": "ANA RUIZ", "FechaRecepcion": "2026-11-02", "TipoDocumento": "Identificación", "Estado": "Recibido"},
+        {"Cliente": "LUIS SOTO", "FechaRecepcion": "2026-11-01", "TipoDocumento": "Operación de seguro (no reembolso)", "Estado": "No es reembolso"},
+        {"Cliente": "LUIS SOTO", "FechaRecepcion": "2026-11-03", "TipoDocumento": "Receta", "Estado": "Recibido"},
+    ]
+    exps = {e["cliente"]: e for e in agrupar(registros, date(2026, 11, 5))}
+    assert exps["ANA RUIZ"]["estado"] == "sin reembolso" and exps["ANA RUIZ"]["faltantes"] == [] and exps["ANA RUIZ"]["documentos"] == 2
+    # con un documento de reembolso ya se exige lo demás; la póliza sigue dentro del mismo expediente
+    assert exps["LUIS SOTO"]["estado"] == "incompleto" and exps["LUIS SOTO"]["documentos"] == 2

@@ -328,7 +328,7 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     const prompt = `Eres el clasificador de documentos de reembolsos de gastos médicos de Arval México (corredor de seguros).
 Recibes el texto de UN documento (puede traer errores de OCR) y candidatos que un buscador encontró en la base de asegurados.
 Responde SOLO un objeto JSON con estas claves:
-- "cliente": nombre EXACTO de la lista CLIENTES a quien pertenece el documento (el asegurado titular, aunque el paciente sea un dependiente), o null si el documento no lo nombra con claridad.
+- "cliente": nombre EXACTO de la lista CLIENTES a quien pertenece el documento (el asegurado titular, aunque el paciente sea un dependiente), o null si el documento no lo nombra con claridad. Vale para TODO documento del asegurado, sea o no de reembolso (pólizas, endosos, identificaciones, estudios): todos van a su expediente.
 - "nombre_leido": nombre del asegurado, paciente o receptor tal como aparece en el documento, o null.
 - "tipo": uno de ${JSON.stringify(TIPOS)}.
 - "fecha_doc": fecha de emisión AAAA-MM-DD, o null.
@@ -557,7 +557,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
         <div class="campos"><input type="text" data-campo="nuevo" placeholder="Nombre del asegurado nuevo" value="${esc(it.nombre_leido || "")}" aria-label="Nombre del asegurado nuevo" style="flex:1 1 220px">
         <button class="btn sec min" type="button" data-accion="nuevo">Es un asegurado nuevo</button></div>
         <div class="campos" style="margin-top:8px"><button class="btn sec min" type="button" data-accion="sinCliente">No sé: mandar a _Por identificar</button>
-        <button class="btn sec min" type="button" data-accion="descartar">No es de reembolso: descartar</button></div>
+        <button class="btn sec min" type="button" data-accion="descartar">No es un documento (firma, logo, repetido): descartar</button></div>
       </details></div>`;
   }
   function tarjetaListo(it){

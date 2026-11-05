@@ -47,7 +47,8 @@ ejecutan rutinas de Claude en la nube y sesiones de Claude Code. Léelo completo
    `identificado_por` ("nombre y RFC" | "nombre completo" | "nombre parcial" | "no identificado"),
    `candidato_cliente` (nombre leído que no está en el catálogo, o null), `rfc`, `total`, `fecha_doc`, `motivo` (una frase, sin datos clínicos).
    Documentos de operación de seguros (endosos, carátulas, finiquitos, cartas de cuentas por pagar, renovaciones) llevan
-   `tipo_documento = "Operación de seguro (no reembolso)"`.
+   `tipo_documento = "Operación de seguro (no reembolso)"`. **Igual se asignan al cliente y van a su expediente:** el
+   expediente reúne todo lo del asegurado y se construye en paralelo a los reembolsos (puede no tener reembolso aún).
 4. Antes de aplicar, trae del panel lo que Lau decidió (ver `docs/rutinas/clasificador.prompt.md`): confirmaciones de
    cliente → `trabajo/confirmaciones.json` (`[{"archivo", "cliente"}]`), altas aprobadas → `trabajo/altas.json`
    (`[{"nombre", "correo", "rfc", "alias"}]`).

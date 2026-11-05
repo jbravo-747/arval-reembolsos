@@ -42,7 +42,7 @@ def test_propone_no_copia_y_decide_destinos(carpetas, tmp_path):
     assert cfdi["cliente"] == "ANA MARIA PEREZ LOPEZ" and cfdi["tipo"] == "CFDI factura"
     assert cfdi["destino"] == "CARTERA UNO/ANA MARIA PEREZ LOPEZ/2026-10_REEMBOLSO 1/20261010_CFDI_01.xml"   # se suma al evento abierto
     carlos = por["20261014_0800_ccc333_receta carlos.pdf"]
-    assert carlos["cliente"] == "CARLOS RUIZ SOTO" and carlos["destino"].startswith("CARTERA UNO/CARLOS RUIZ SOTO/2026-10_Reembolso 20261014/")
+    assert carlos["cliente"] == "CARLOS RUIZ SOTO" and carlos["destino"].startswith("CARTERA UNO/CARLOS RUIZ SOTO/2026-10_Expediente 20261014/")
     assert carlos["tipo"] == "Receta"
     assert por["20261013_1100_bbb222_escaneo.pdf"]["destino"].startswith("_Por identificar/")
     assert "20261012_0930_aaa111_image001.png" not in por and panel["conteo"]["ignorado"] == 1
@@ -90,7 +90,7 @@ def test_eventos_se_miden_por_llegada_no_por_fecha_del_documento(carpetas, tmp_p
     (c / "20261016_0900_ddd444_informe 2024-01-05.pdf").write_bytes(b"%PDF-1.4 roto otro")
     panel = pt.correr(entrada, destino, trabajo, "aplica", usar_ocr=False, hoy=HOY)
     nuevo = [p for p in panel["pendientes"] if p["id"].startswith("20261016_0900")][0]
-    assert "/2026-10_Reembolso 20261014/20240105_INFORME_01.pdf" in nuevo["destino"]
+    assert "/2026-10_Expediente 20261014/20240105_INFORME_01.pdf" in nuevo["destino"]
     exp = [e for e in pt.expedientes_destino(destino, date(2026, 10, 16), pt.llegadas_por_evento(pt._cargar_estado(trabajo / "puente_estado.jsonl")))
            if e["cliente"] == "CARLOS RUIZ SOTO"][0]
     assert exp["dias_sin_movimiento"] == 0 and exp["ultimo"] == "2026-10-16"

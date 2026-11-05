@@ -46,7 +46,7 @@ def test_cliente_nuevo_abre_evento_y_no_sobrescribe(tmp_path):
     datos = {"nombre": "a.pdf", "cliente": "ANA RUIZ", "cartera": "SAYER CLIENTES", "tipo": "Receta", "fecha_doc": "2026-10-29"}
     colocar_paquete(_paquete(tmp_path, [datos]), arval)
     r = colocar_paquete(_paquete(tmp_path, [datos]), arval, hoy=date(2026, 10, 30))
-    assert r[0]["destino"] == "SAYER CLIENTES/ANA RUIZ/2026-10_Reembolso 20261030/20261029_RECETA_02.pdf"
+    assert r[0]["destino"] == "SAYER CLIENTES/ANA RUIZ/2026-10_Expediente 20261030/20261029_RECETA_02.pdf"
 
 
 def test_no_escribe_en_una_carpeta_sin_marca(tmp_path):

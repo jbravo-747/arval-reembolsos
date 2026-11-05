@@ -107,8 +107,8 @@ def test_apply_aplica_mueve_y_actualiza(tmp_path, monkeypatch):
     mover_args = [e[1] for e in falso["g"].escrituras if e[0] == "mover"]
     # Se construye en Arval: cartera desconocida -> _Sin cartera, evento nuevo por la fecha de llegada, nombres estándar
     assert sorted((a[1], a[2]) for a in mover_args) == [
-        ("/Arval/_Sin cartera/Ana María Pérez López/2026-10_Reembolso 20261008", "20261001_CFDI_01.xml"),
-        ("/Arval/_Sin cartera/Ana María Pérez López/2026-10_Reembolso 20261008", "20261008_DOC_01.pdf")]   # confirmado por Lau sin tipo: DOC
+        ("/Arval/_Sin cartera/Ana María Pérez López/2026-10_Expediente 20261008", "20261001_CFDI_01.xml"),
+        ("/Arval/_Sin cartera/Ana María Pérez López/2026-10_Expediente 20261008", "20261008_DOC_01.pdf")]   # confirmado por Lau sin tipo: DOC
 
 
 def test_apply_sin_marca_de_destino_no_mueve_nada(tmp_path, monkeypatch):

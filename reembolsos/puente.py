@@ -138,7 +138,7 @@ def _fechas_de(ev, destino, llegadas):
 
 
 def carpeta_evento(carpeta_cliente, fecha, en_corrida=None, destino=None, llegadas=None):
-    """Evento abierto del cliente (movimiento a VENTANA_DIAS o menos) o uno nuevo AAAA-MM_Reembolso AAAAMMDD.
+    """Evento abierto del cliente (movimiento a VENTANA_DIAS o menos) o uno nuevo AAAA-MM_Expediente AAAAMMDD.
     en_corrida: {nombre de evento: [fechas]} ya asignados en esta corrida (aún no copiados en modo propone)."""
     fechas = {}
     if carpeta_cliente.exists():
@@ -152,7 +152,7 @@ def carpeta_evento(carpeta_cliente, fecha, en_corrida=None, destino=None, llegad
 
 def elegir_evento(fechas, fecha):
     """{nombre de evento: [fechas]} -> (evento con movimiento a VENTANA_DIAS o menos de fecha, False) o (uno nuevo
-    AAAA-MM_Reembolso AAAAMMDD, True). La usan el puente (carpetas locales) y la rutina en la nube (Graph)."""
+    AAAA-MM_Expediente AAAAMMDD, True). El evento es del expediente, haya o no reembolso. La usan el puente (carpetas locales) y la rutina en la nube (Graph)."""
     candidatos = []
     for nombre, lista in fechas.items():
         dist = min((abs((f - fecha).days) for f in lista), default=None)
@@ -160,7 +160,7 @@ def elegir_evento(fechas, fecha):
             candidatos.append((dist, nombre))
     if candidatos:
         return min(candidatos)[1], False
-    return f"{fecha:%Y-%m}_Reembolso {fecha:%Y%m%d}", True
+    return f"{fecha:%Y-%m}_Expediente {fecha:%Y%m%d}", True
 
 
 def _siguiente_nombre(carpeta, base, ext, reservados):
@@ -339,7 +339,7 @@ TIPO_DE_CORTO = {v: k for k, v in TIPO_CORTO.items()}
 
 def expedientes_destino(destino, hoy=None, llegadas=None):
     """Expedientes según las carpetas de /Arval: por evento, tipos presentes (por el nombre estándar) y faltantes."""
-    from .expedientes import ETIQUETAS, REQUISITOS
+    from .expedientes import ETIQUETAS, REQUISITOS, TIPOS_REEMBOLSO
     destino, hoy = Path(destino), hoy or date.today()
     salida = []
     if not destino.exists():
@@ -355,9 +355,10 @@ def expedientes_destino(destino, hoy=None, llegadas=None):
                 fechas = _fechas_de(ev, destino, llegadas)
                 if not fechas:
                     continue
-                faltantes = [ETIQUETAS[k] for k, aceptados in REQUISITOS.items() if not tipos & set(aceptados)]
+                # Sin documentos de reembolso el expediente no tiene faltantes: se construye en paralelo al reembolso
+                faltantes = [ETIQUETAS[k] for k, aceptados in REQUISITOS.items() if not tipos & set(aceptados)] if tipos & TIPOS_REEMBOLSO else []
                 salida.append({"cartera": cartera.name, "cliente": cliente.name, "evento": ev.name, "tipos": sorted(tipos),
-                               "faltantes": faltantes, "estado": "incompleto" if faltantes else "completo",
+                               "faltantes": faltantes, "estado": "incompleto" if faltantes else "completo" if tipos & TIPOS_REEMBOLSO else "sin reembolso",
                                "ultimo": str(max(fechas)), "dias_sin_movimiento": (hoy - max(fechas)).days})
     return sorted(salida, key=lambda e: (e["estado"] != "incompleto", -e["dias_sin_movimiento"]))
 

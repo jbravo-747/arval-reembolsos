@@ -315,7 +315,7 @@ a{color:var(--accent)}
 
   function pintarExpedientes(){
     const cont = $("expedientes");
-    const lista = estado.expedientes.filter(e => e.estado !== "completo").sort((a, b) => b.dias_sin_movimiento - a.dias_sin_movimiento);
+    const lista = estado.expedientes.filter(e => e.estado === "incompleto" || e.estado === "en revisión").sort((a, b) => b.dias_sin_movimiento - a.dias_sin_movimiento);
     $("expNota").textContent = estado.expedientes.length ? `${lista.length} de ${estado.expedientes.length}` : "";
     if (!lista.length) { if (estado.expedientes.length) cont.innerHTML = `<div class="vacio">Todos los expedientes abiertos tienen sus documentos.</div>`; return; }
     cont.innerHTML = lista.slice(0, 30).map(e => {

@@ -1,5 +1,9 @@
 """Expedientes: agrupa los documentos registrados por cliente y evento, y dice qué falta.
 
+El expediente reúne TODO lo del asegurado (pólizas, endosos, identificaciones, estudios...), haya o no reembolso: se
+construye en paralelo a los reembolsos. Los faltantes solo se calculan cuando el evento ya tiene algún documento de
+reembolso; si no, queda "sin reembolso" y no se le exige nada.
+
 Un expediente de reembolso completo suele llevar: factura (CFDI XML + representación PDF), receta o indicación
 médica, e informe médico. Dos documentos del mismo cliente pertenecen al mismo evento si llegan con menos de
 VENTANA_DIAS de diferencia.
@@ -15,6 +19,8 @@ REQUISITOS = {
     "informe": ("Informe médico", "Estudio o resultado"),
 }
 ETIQUETAS = {"factura_xml": "CFDI (XML)", "factura_pdf": "factura en PDF", "receta": "receta", "informe": "informe médico"}
+# Tipos que indican que el evento ya es (o empieza a ser) un reembolso
+TIPOS_REEMBOLSO = {t for v in REQUISITOS.values() for t in v} | {"Formato de reclamación", "Comprobante de pago", "Finiquito o dictamen"}
 
 
 def _fecha(valor):
@@ -31,7 +37,7 @@ def agrupar(registros, hoy=None):
     por_cliente = defaultdict(list)
     for r in registros:
         c = str(r.get("Cliente") or "").strip()
-        if not c or r.get("Estado") in ("Descartado - duplicado", "Sin documentos", "No es reembolso", "Error"):
+        if not c or r.get("Estado") in ("Descartado - duplicado", "Sin documentos", "Error"):
             continue
         f = _fecha(r.get("FechaRecepcion"))
         if f:
@@ -49,7 +55,7 @@ def agrupar(registros, hoy=None):
                 if inicio is None:
                     inicio = f
                 grupo.append((f, r))
-    orden = {"incompleto": 0, "en revisión": 1, "completo": 2}
+    orden = {"incompleto": 0, "en revisión": 1, "completo": 2, "sin reembolso": 3}
     expedientes.sort(key=lambda e: (orden[e["estado"]], -e["dias_sin_movimiento"]))
     return expedientes
 
@@ -62,6 +68,10 @@ def _resumir(cliente, grupo, hoy):
     esencial_ok = ("factura_xml" in presentes or "factura_pdf" in presentes) and ("receta" in presentes or "informe" in presentes)
     por_revisar = any(r.get("Estado") in ("Revisar", "Cliente desconocido") for _, r in grupo)
     estado = "en revisión" if por_revisar else ("completo" if esencial_ok else "incompleto")
+    if not set(tipos) & TIPOS_REEMBOLSO:   # expediente sin reembolso (todavía): no se le exige nada
+        faltantes = []
+        if not por_revisar:
+            estado = "sin reembolso"
     ultima = max(f for f, _ in grupo)
     total = 0.0
     for _, r in grupo:
