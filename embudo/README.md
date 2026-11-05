@@ -28,3 +28,7 @@ PYTHONPATH=D:/Arval/_herramientas/pyi TMP=D:/Arval/_herramientas/tmp PYINSTALLER
 Las capturas no están en git: se regeneran con `python -I manual/generar_capturas.py` (Chrome sin ventana) y
 `python manual/capturar_programa.py` (ventana del .exe con Pillow; sin `-I` porque Pillow está en los paquetes de usuario).
 Al republicar: `files` con `img/*.png` y `root` en `embudo/manual`.
+
+El manual también va **dentro del clasificador** (botón «Manual»): al republicar `embudo.html`, incluir en `files`
+`manual/manual.html` y `manual/img/*.png` (root `embudo`). PDF: `python -I manual/generar_pdf.py` -> `manual/Manual_Clasificador_Arval.pdf`
+(fuera de git, `*.pdf`).
