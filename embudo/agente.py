@@ -4,12 +4,14 @@ Doble clic        -> ventana de configuración: detecta la carpeta compartida Ar
                      se copia a %LOCALAPPDATA%\\ArvalClasificador, se registra para iniciar con Windows (sin permisos de
                      administrador), crea los accesos directos al clasificador y al panel, y arranca el vigilante.
                      Si encuentra la primera versión (ArvalEmbudo) la detiene y le quita el arranque automático.
-vigilar           -> en segundo plano: cada pocos segundos busca ARVAL_EMBUDO_*.zip en Descargas y los acomoda en Arval.
+vigilar           -> en segundo plano: cada pocos segundos busca ARVAL_EMBUDO_*.zip en las carpetas de descargas de los
+                     navegadores de la PC (se detectan solas) y los acomoda en Arval.
 procesar <zip>    -> acomoda un paquete y termina (pruebas).
 """
 import ctypes
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -72,6 +74,45 @@ def carpeta_descargas():
             return Path(os.path.expandvars(winreg.QueryValueEx(k, DESCARGAS_GUID)[0]))
     except OSError:
         return Path.home() / "Downloads"
+
+
+NAVEGADORES_CHROMIUM = (r"Microsoft\Edge\User Data", r"Google\Chrome\User Data", r"BraveSoftware\Brave-Browser\User Data")
+
+
+def carpetas_descarga(extra=None):
+    """Todas las carpetas donde los navegadores de esta PC guardan descargas: la de Windows, la que tenga configurada cada
+    perfil de Edge, Chrome y Brave, la de Firefox y una carpeta extra opcional. Así nadie tiene que escribir rutas."""
+    rutas = [carpeta_descargas()]
+    local = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    for base in NAVEGADORES_CHROMIUM:
+        try:
+            perfiles = [p for p in (local / base).iterdir() if (p / "Preferences").is_file()]
+        except OSError:
+            continue
+        for p in perfiles:
+            try:
+                pref = json.loads((p / "Preferences").read_text(encoding="utf-8", errors="replace"))
+                d = (pref.get("download") or {}).get("default_directory")
+                if d:
+                    rutas.append(Path(os.path.expandvars(d)))
+            except (OSError, ValueError, AttributeError):
+                pass
+    try:
+        for prefs in (Path(os.environ.get("APPDATA", "")) / "Mozilla" / "Firefox" / "Profiles").glob("*/prefs.js"):
+            texto = prefs.read_text(encoding="utf-8", errors="replace")
+            m = re.search(r'user_pref\("browser\.download\.dir",\s*"(.+?)"\);', texto)
+            if m and 'browser.download.folderList", 2' in texto:
+                rutas.append(Path(m[1].replace("\\\\", "\\")))
+    except OSError:
+        pass
+    if extra:
+        rutas.append(Path(extra))
+    vistos, salida = set(), []
+    for r in rutas:
+        clave = str(r).rstrip("\\/").lower()
+        if clave not in vistos and r.is_dir():
+            vistos.add(clave); salida.append(r)
+    return salida
 
 
 def raices_onedrive():
@@ -165,9 +206,10 @@ def exe_actual():
     return Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve()
 
 
-def instalar(arval, descargas, autoarranque=True, accesos=True):
+def instalar(arval, descargas=None, autoarranque=True, accesos=True):
+    """descargas: carpeta extra opcional; las de los navegadores se detectan solas al vigilar."""
     CASA.mkdir(parents=True, exist_ok=True)
-    arval, descargas = Path(arval), Path(descargas)
+    arval, descargas = Path(arval), (str(Path(descargas)) if descargas else "")
     destino.exigir(arval)
     (arval / CARPETA_REGISTRO).mkdir(parents=True, exist_ok=True)   # prueba de escritura en la carpeta compartida
     prueba = arval / CARPETA_REGISTRO / ".prueba_escritura"
@@ -179,7 +221,7 @@ def instalar(arval, descargas, autoarranque=True, accesos=True):
         if exe_actual() != exe:
             detener_vigilante()
             shutil.copy2(exe_actual(), exe)
-    cfg = {"arval": str(arval), "descargas": str(descargas), "procesados": str(CASA / "procesados"), "exe": str(exe),
+    cfg = {"arval": str(arval), "descargas": descargas, "procesados": str(CASA / "procesados"), "exe": str(exe),
            "embudo_url": EMBUDO_URL, "configurado": datetime.now().isoformat(timespec="seconds")}
     CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=1), encoding="utf-8")
     comando = f'"{exe}" vigilar' if getattr(sys, "frozen", False) else f'"{sys.executable}" "{exe}" vigilar'
@@ -199,7 +241,7 @@ def instalar(arval, descargas, autoarranque=True, accesos=True):
                 (escritorio / f"{nombre}.url").write_text(f"[InternetShortcut]\nURL={url}\n", encoding="utf-8")
             except OSError:
                 pass
-    log(f"configurado: arval={arval} descargas={descargas} autoarranque={autoarranque}")
+    log(f"configurado: arval={arval} carpeta extra={descargas or 'ninguna'} autoarranque={autoarranque}")
     iniciar_vigilante(exe)
     return cfg
 
@@ -273,10 +315,15 @@ def vigilar(una_vez=False):
         log(f"vigilar: falta configurar (abre {APP}.exe)"); return
     if not una_vez and not _un_solo_vigilante():
         return
-    log(f"vigilante activo en {cfg['descargas']} -> {cfg['arval']}")
-    ultimo_aseo, sin_marca = 0, False
+    ultimo_aseo, sin_marca, carpetas, revisadas = 0, False, [], 0
     while True:
         try:
+            # Las carpetas de descargas se vuelven a detectar cada minuto (un navegador nuevo, un cambio de carpeta)
+            if time.time() - revisadas > 60:
+                nuevas = carpetas_descarga(cfg.get("descargas"))
+                if nuevas != carpetas:
+                    log(f"vigilando {', '.join(map(str, nuevas)) or 'ninguna carpeta'} -> {cfg['arval']}")
+                carpetas, revisadas = nuevas, time.time()
             # Sin la marca oficial (carpeta que dejó de sincronizarse, otra carpeta) los paquetes esperan en Descargas
             if not destino.es_oficial(cfg["arval"]):
                 if not sin_marca:
@@ -286,7 +333,7 @@ def vigilar(una_vez=False):
                 if sin_marca:
                     log("reanudado: la carpeta Arval tiene la marca de nuevo")
                 sin_marca = False
-            for p in sorted(Path(cfg["descargas"]).glob(PATRON_PAQUETE)) if not sin_marca else []:
+            for p in sorted(x for c in carpetas for x in c.glob(PATRON_PAQUETE)) if not sin_marca else []:
                 if _estable(p):
                     procesar(p, cfg)
             if time.time() - ultimo_aseo > 3600:
@@ -325,7 +372,8 @@ ANTES (lo hace Joel con la cuenta soluciones@)
 
 4. CONFIGURAR ESTE PROGRAMA
   • «Carpeta compartida Arval» debe ser OneDrive - Arval\\Arval. La lista de comprobación lo confirma.
-  • «Carpeta de Descargas» debe ser donde guarda los archivos el navegador.
+  • Las carpetas de descargas de los navegadores (Edge, Chrome, Brave, Firefox) se detectan solas;
+    solo si el navegador guarda en un lugar raro, elígelo en «Carpetas de descargas».
   • Deja marcadas las casillas y pulsa «Guardar e iniciar». Todo debe quedar en verde.
 
 5. PRUEBA
@@ -392,7 +440,7 @@ def puede_escribir(carpeta):
         return False
 
 
-def comprobaciones(arval, descargas):
+def comprobaciones(arval, descargas=None):
     """[(ok, título, detalle)] de todo lo que necesita el clasificador en esta PC; ok=None si aún no aplica."""
     correo, carpeta = cuenta_trabajo()
     a = Path(arval) if arval else None
@@ -405,7 +453,8 @@ def comprobaciones(arval, descargas):
         (hay_arval, "Carpeta Arval en esta computadora", str(a) if hay_arval else "No encontré la carpeta Arval sincronizada (paso 2)"),
         (oficial, "Es la Arval de soluciones@", f"Trae {destino.MARCA}" if oficial else f"Falta {destino.MARCA}: no es la correcta o no termina de sincronizar (pasos 2 y 3)"),
         (oficial and puede_escribir(a), "Permiso para guardar en Arval", "Se pudo escribir" if oficial and puede_escribir(a) else "No se puede escribir (permiso «Puede editar» o sincronización en pausa)"),
-        (bool(descargas) and Path(descargas).is_dir(), "Carpeta de Descargas", str(descargas)),
+        (bool(carpetas_descarga(descargas)), "Carpetas de descargas que vigila",
+         " · ".join(map(str, carpetas_descarga(descargas))) or "No encontré ninguna carpeta de descargas"),
         ((bool(cfg) and arranque_registrado()) if cfg else None, "Configurado y arranca con Windows",
          f"Configurado el {cfg['configurado'][:16].replace('T', ' ')}" if cfg else "Aún no: pulsa «Guardar e iniciar» (paso 4)"),
         (vigilante_activo() if cfg else None, "Vigilando Descargas ahora", "Activo" if vigilante_activo() else "Detenido" if cfg else "Se activa al guardar"),
@@ -432,11 +481,15 @@ def ventana():
 
     candidatas = [str(p) for p in candidatas_arval()]
     v_arval = tk.StringVar(value=previo.get("arval") or (candidatas[0] if candidatas else ""))
-    v_desc = tk.StringVar(value=previo.get("descargas") or str(carpeta_descargas()))
+    extra_previo = previo.get("descargas") or ""
+    if extra_previo and Path(extra_previo) in carpetas_descarga():   # ya se detecta sola: no hace falta como extra
+        extra_previo = ""
+    v_desc = tk.StringVar(value=extra_previo)
     v_auto, v_acc = tk.BooleanVar(value=True), tk.BooleanVar(value=True)
 
     def fila(titulo, var, valores=None):
-        ttk.Label(marco, text=titulo, font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        if titulo:
+            ttk.Label(marco, text=titulo, font=("Segoe UI", 10, "bold")).pack(anchor="w")
         f = ttk.Frame(marco); f.pack(fill="x", pady=(2, 10))
         caja = ttk.Combobox(f, textvariable=var, values=valores or []) if valores is not None else ttk.Entry(f, textvariable=var)
         caja.pack(side="left", fill="x", expand=True)
@@ -451,7 +504,10 @@ def ventana():
         ttk.Label(marco, foreground="#2e7d4f" if oficial else "#b26a00", wraplength=590,
                   text="Comprobado: es la carpeta Arval de soluciones@." if oficial else
                   f"Ninguna carpeta trae la marca {destino.MARCA}: no es la Arval de soluciones@ o aún no termina de sincronizar.").pack(anchor="w", pady=(0, 8))
-    fila("Carpeta de Descargas del navegador", v_desc)
+    ttk.Label(marco, text="Carpetas de descargas", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+    ttk.Label(marco, foreground="#58595b", wraplength=670, text="Se detectan solas en cada navegador (Edge, Chrome, Brave, Firefox): "
+              + " · ".join(map(str, carpetas_descarga())) + ". Solo si el navegador guarda en otro lugar, elígelo aquí:").pack(anchor="w", pady=(2, 0))
+    fila("", v_desc)
     ttk.Checkbutton(marco, text="Iniciar con Windows", variable=v_auto).pack(anchor="w")
     ttk.Checkbutton(marco, text="Accesos directos al clasificador y al panel en el escritorio", variable=v_acc).pack(anchor="w", pady=(0, 10))
     estado = ttk.Label(marco, wraplength=670, text=f"Estado: {'configurado el ' + cfg['configurado'][:16].replace('T', ' ') if cfg else 'sin configurar'}")
@@ -472,11 +528,11 @@ def ventana():
     ttk.Button(marco, text="Volver a revisar", command=refrescar).pack(anchor="w", pady=(0, 12))
 
     def guardar():
-        a, d = Path(v_arval.get().strip()), Path(v_desc.get().strip())
+        a, d = Path(v_arval.get().strip()), v_desc.get().strip()
         if not a.is_dir():
             estado.config(text="La carpeta Arval no existe. Elige la carpeta sincronizada de OneDrive.", foreground="#b3261e"); return
-        if not d.is_dir():
-            estado.config(text="La carpeta de Descargas no existe.", foreground="#b3261e"); return
+        if d and not Path(d).is_dir():
+            estado.config(text="La otra carpeta de descargas no existe; elígela de nuevo o déjala vacía.", foreground="#b3261e"); return
         if not destino.es_oficial(a):
             estado.config(foreground="#b3261e", text=f"Esta no es la carpeta Arval de soluciones@: no trae la subcarpeta {destino.MARCA}. "
                           "Pulsa «Ver Arval en la web»: la carpeta correcta la tiene. Si en la web sí aparece, espera a que OneDrive "
@@ -488,7 +544,7 @@ def ventana():
         except Exception as e:  # noqa: BLE001 — cualquier otro fallo se muestra en la ventana y queda en el registro
             log(f"error al configurar: {type(e).__name__}: {e}")
             estado.config(text=f"No se pudo configurar ({type(e).__name__}: {e}). Manda una captura de esta ventana a Joel.", foreground="#b3261e"); return
-        estado.config(foreground="#2e7d4f", text=f"Listo. El agente vigila {d} y guarda en {a}. Ya puedes cerrar esta ventana; "
+        estado.config(foreground="#2e7d4f", text=f"Listo. El agente vigila las descargas de esta PC y guarda en {a}. Ya puedes cerrar esta ventana; "
                       "seguirá trabajando en segundo plano y arrancará solo al encender la computadora.")
         raiz.after(2500, refrescar)   # el vigilante tarda un momento en arrancar
 

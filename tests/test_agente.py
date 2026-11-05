@@ -49,3 +49,20 @@ def test_instalar_rechaza_carpeta_sin_marca(entorno):
     with pytest.raises(DestinoIncorrecto):
         agente.instalar(arval, entorno / "Descargas")
     assert not (arval / "_Embudo").exists()
+
+
+def test_detecta_las_carpetas_de_descarga_de_cada_navegador(tmp_path, monkeypatch):
+    import json
+    local, d_edge, d_win = tmp_path / "local", tmp_path / "D_Descargas", tmp_path / "Downloads"
+    d_edge.mkdir(); d_win.mkdir()
+    perfil = local / "Microsoft" / "Edge" / "User Data" / "Profile 1"
+    perfil.mkdir(parents=True)
+    (perfil / "Preferences").write_text(json.dumps({"download": {"default_directory": str(d_edge)}}), encoding="utf-8")
+    sin_carpeta = local / "Google" / "Chrome" / "User Data" / "Default"
+    sin_carpeta.mkdir(parents=True)
+    (sin_carpeta / "Preferences").write_text(json.dumps({"download": {}}), encoding="utf-8")
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
+    monkeypatch.setattr(agente, "carpeta_descargas", lambda: d_win)
+    assert agente.carpetas_descarga() == [d_win, d_edge]
+    assert agente.carpetas_descarga(str(d_edge)) == [d_win, d_edge]   # la extra repetida no se duplica
