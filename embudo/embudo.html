@@ -97,6 +97,8 @@ button.btn:disabled{opacity:.5;cursor:default}
 button:focus-visible,select:focus-visible,input:focus-visible,.boca:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 details.mas summary{cursor:pointer;color:var(--muted);font-weight:600;font-size:.88rem}
 details.mas[open] summary{margin-bottom:8px}
+.nuevo{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px dashed var(--accent);border-radius:8px;background:var(--accent-soft);margin-bottom:8px}
+.nuevo-tit{font-weight:600;font-size:.9rem}
 .envio{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:8px;background:var(--accent-soft)}
 .envio strong{font-family:var(--display)}
 table.t{border-collapse:collapse;width:100%;font-size:.88rem}
@@ -211,7 +213,19 @@ a{color:var(--accent)}
   const estado = { items: new Map(), cola: [], trabajando: false, asegurados: [], catalogo: [], carteraDe: new Map(), historial: [], uid: null };
   let db = null, sample = null, downloads = null;
 
-  // ---------- Base de asegurados (copia del panel: asegurados/lista y catalogo/lista) ----------
+  // ---------- Base de asegurados (copia del panel: asegurados/lista y catalogo/lista, más los creados aquí en «nuevos») ----------
+  estado.base = []; estado.catalogoBase = []; estado.nuevos = [];
+  function recalcular(){
+    const conocidos = new Set(estado.base.map(a => normaliza(a.cliente)));
+    const nuevos = estado.nuevos.filter(n => !conocidos.has(normaliza(n.cliente)));
+    estado.catalogo = [...new Set([...estado.catalogoBase, ...nuevos.map(n => n.cliente)])];
+    prepararBase([...estado.base, ...nuevos]);
+  }
+  function carteras(){
+    const cuenta = new Map();
+    estado.asegurados.forEach(a => a.cartera && cuenta.set(a.cartera, (cuenta.get(a.cartera) || 0) + 1));
+    return [...cuenta.entries()].sort((x, y) => y[1] - x[1]).map(([c]) => c);
+  }
   function prepararBase(lista){
     estado.asegurados = (lista || []).map(a => {
       const fichas = (n) => normaliza(n).split(" ").filter(w => w.length >= 3 && !PALABRAS_VACIAS.has(w));
@@ -482,14 +496,34 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     await guardarEntrada(it); await aprender(it); pintar();
     toast(cliente ? `Asignado a ${cliente}` : "Irá a _Por identificar");
   }
-  async function clienteNuevo(id, nombre){
+  // Asegurado nuevo: se suma a la lista (colección «nuevos», compartida) y el documento abre su expediente en <Cartera>/<Nombre>
+  async function clienteNuevo(id, nombre, cartera, rfc){
     const it = estado.items.get(id); if (!it) return;
-    nombre = nombre.trim().toUpperCase();
-    if (nombre.length < 5) return toast("Escribe el nombre completo del asegurado");
-    it.candidato_cliente = nombre; it.cliente = null; it.etapa = "listo"; it.decidido_por = "Lau (cliente nuevo)";
-    if (db) { try { await db.doc("altas/" + normaliza(nombre).replace(/ /g, "_").slice(0, 150)).set({ nombre, rfc: it.rfc || "", correo: "", alias: "", archivo: it.nombre, por: estado.uid, hora: new Date().toISOString(), aplicada: false }); } catch (e) {} }
+    nombre = String(nombre || "").trim().replace(/\s+/g, " ").toUpperCase();
+    rfc = String(rfc || "").trim().toUpperCase().replace(/[^A-Z0-9&Ñ]/g, "");
+    if (nombre.length < 5 || nombre.split(" ").length < 2) return toast("Escribe el nombre completo del asegurado");
+    if (!cartera) return toast("Elige la cartera del asegurado");
+    if (rfc && !/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(rfc)) return toast("El RFC no tiene el formato correcto; corrígelo o déjalo vacío");
+    const existente = estado.asegurados.find(a => normaliza(a.cliente) === normaliza(nombre) || normaliza(a.nombre) === normaliza(nombre));
+    if (existente) { toast(`${existente.cliente} ya está en la lista: se asigna a esa persona`); return asignar(id, existente.cliente); }
+    const caja = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+    if (caja) { const t = caja.querySelector("select[data-campo=tipo]"), f = caja.querySelector("input[data-campo=fecha]"); if (t) it.tipo = t.value; if (f) it.fecha_doc = f.value; }
+    const clave = normaliza(nombre).replace(/ /g, "_").slice(0, 150);
+    const hora = new Date().toISOString();
+    const asegurado = { nombre, cliente: nombre, cartera, rfc, correo: "", personas: [], polizas: [], revisado: false, origen: "clasificador", archivo: it.nombre, por: estado.uid, hora };
+    if (db) {
+      try {
+        await db.doc("nuevos/" + clave).set(asegurado);
+        await db.doc("altas/" + clave).set({ nombre, cartera, rfc, correo: "", alias: "", archivo: it.nombre, por: estado.uid, hora, aplicada: false });
+      } catch (e) { return toast("No se pudo guardar el asegurado nuevo; intenta de nuevo"); }
+    }
+    if (!estado.nuevos.some(n => normaliza(n.cliente) === normaliza(nombre))) estado.nuevos.push(asegurado);
+    recalcular();
+    it.cliente = nombre; it.candidato_cliente = null; it.etapa = "listo"; it.confianza = "Alta";
+    it.identificado_por = "asegurado nuevo"; it.decidido_por = "Lau (asegurado nuevo)";
+    if (rfc && !it.rfc) it.rfc = rfc;
     await guardarEntrada(it); pintar();
-    toast("Alta propuesta; el archivo irá a _Por identificar hasta que se apruebe");
+    toast(`${nombre} se agregó a la lista; su expediente se crea al guardar en OneDrive`);
   }
   async function descartar(id){
     const it = estado.items.get(id); if (!it) return;
@@ -555,8 +589,13 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
       <div class="opciones" data-campo="resultados"></div>
       <div class="campos"><label>Tipo <select data-campo="tipo">${opcionesTipo(it.tipo)}</select></label><label>Fecha <input type="date" data-campo="fecha" value="${esc(it.fecha_doc || "")}"></label></div>
       <details class="mas"><summary>Otras opciones</summary>
-        <div class="campos"><input type="text" data-campo="nuevo" placeholder="Nombre del asegurado nuevo" value="${esc(it.nombre_leido || "")}" aria-label="Nombre del asegurado nuevo" style="flex:1 1 220px">
-        <button class="btn sec min" type="button" data-accion="nuevo">Es un asegurado nuevo</button></div>
+        <div class="nuevo">
+          <div class="nuevo-tit">¿Es un asegurado nuevo? Se agrega a la lista y se le abre su expediente.</div>
+          <div class="campos"><input type="text" data-campo="nuevo" placeholder="Nombre completo del asegurado" value="${esc(it.nombre_leido || "")}" aria-label="Nombre completo del asegurado nuevo" style="flex:1 1 240px"></div>
+          <div class="campos"><label>Cartera <select data-campo="cartera">${carteras().map(c => `<option>${esc(c)}</option>`).join("") || "<option>ARVAL CLIENTES</option>"}</select></label>
+            <label>RFC <input type="text" data-campo="rfcnuevo" placeholder="opcional" value="${esc(it.rfc || "")}" style="width:150px" aria-label="RFC del asegurado nuevo"></label></div>
+          <div class="campos"><button class="btn min" type="button" data-accion="nuevo">Crear asegurado y su expediente</button></div>
+        </div>
         <div class="campos" style="margin-top:8px"><button class="btn sec min" type="button" data-accion="sinCliente">No sé: mandar a _Por identificar</button>
         <button class="btn sec min" type="button" data-accion="descartar">No es un documento (firma, logo, repetido): descartar</button></div>
       </details></div>`;
@@ -625,7 +664,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     const caja = b.closest("[data-id]"); const id = caja && caja.dataset.id;
     const a = b.dataset.accion;
     if (a === "asignar") asignar(id, b.dataset.cliente);
-    else if (a === "nuevo") clienteNuevo(id, caja.querySelector("[data-campo=nuevo]").value);
+    else if (a === "nuevo") clienteNuevo(id, caja.querySelector("[data-campo=nuevo]").value, caja.querySelector("[data-campo=cartera]").value, caja.querySelector("[data-campo=rfcnuevo]").value);
     else if (a === "sinCliente") asignar(id, null, "Lau (sin asegurado)");
     else if (a === "descartar") descartar(id);
     else if (a === "reabrir") reabrir(id);
@@ -653,8 +692,9 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     if (!db) { $("avisoDb").hidden = false; pintarBase(); return; }
     try { estado.uid = u ? await u.id() : null; } catch (e) { estado.uid = null; }
     const err = (e) => { if (e && e.code === "revoked") $("avisoDb").hidden = false; };
-    db.doc("catalogo/lista").onSnapshot((x) => { estado.catalogo = x.exists ? (x.data().nombres || []) : []; pintarBase(); }, err);
-    db.doc("asegurados/lista").onSnapshot((x) => { prepararBase(x.exists ? x.data().asegurados : []); }, err);
+    db.doc("catalogo/lista").onSnapshot((x) => { estado.catalogoBase = x.exists ? (x.data().nombres || []) : []; recalcular(); }, err);
+    db.doc("asegurados/lista").onSnapshot((x) => { estado.base = x.exists ? (x.data().asegurados || []) : []; recalcular(); }, err);
+    db.collection("nuevos").limit(500).onSnapshot((x) => { estado.nuevos = x.docs.map(d => d.data()); recalcular(); }, err);
     db.collection("entradas").limit(300).onSnapshot((x) => { estado.historial = x.docs.map(d => ({ _id: d.id, ...d.data() })); pintarHistorial(); }, err);
   }
   pintar();

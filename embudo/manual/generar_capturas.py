@@ -41,7 +41,10 @@ setTimeout(() => {
     <input type="search" placeholder="Buscar otro: nombre, RFC, póliza o dependiente">
     <div class="campos"><label>Tipo <select><option>Receta</option></select></label><label>Fecha <input type="date" value="2026-11-03"></label></div>
     <details class="mas" ${vista === "opciones" ? "open" : ""}><summary>Otras opciones</summary>
-      <div class="campos"><input type="text" value="MA. EJEMPLO PÉREZ" style="flex:1 1 220px"><button class="btn sec min" type="button">Es un asegurado nuevo</button></div>
+      <div class="nuevo"><div class="nuevo-tit">¿Es un asegurado nuevo? Se agrega a la lista y se le abre su expediente.</div>
+        <div class="campos"><input type="text" value="MARÍA EJEMPLO PÉREZ GARZA" style="flex:1 1 240px"></div>
+        <div class="campos"><label>Cartera <select><option>ARVAL CLIENTES</option></select></label><label>RFC <input type="text" placeholder="opcional" style="width:150px"></label></div>
+        <div class="campos"><button class="btn min" type="button">Crear asegurado y su expediente</button></div></div>
       <div class="campos" style="margin-top:8px"><button class="btn sec min" type="button">No sé: mandar a _Por identificar</button>
       <button class="btn sec min" type="button">No es un documento (firma, logo, repetido): descartar</button></div>
     </details></div>`;
@@ -73,7 +76,7 @@ setTimeout(() => {
 
 VISTAS = {   # vista: (ancho, alto) en píxeles CSS
     "inicio": (1180, 470), "soltar": (1180, 380), "riel": (1180, 120), "leyendo": (640, 330),
-    "pregunta": (640, 560), "opciones": (640, 680), "listos": (640, 760), "historial": (1180, 260),
+    "pregunta": (640, 560), "opciones": (640, 860), "listos": (640, 760), "historial": (1180, 260),
 }
 
 
