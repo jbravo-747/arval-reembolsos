@@ -61,7 +61,7 @@ def quitar_version_anterior():
             winreg.DeleteValue(k, APP_ANTERIOR)
     except OSError:
         pass
-    (Path.home() / "Desktop" / "Embudo de expedientes.url").unlink(missing_ok=True)
+    (carpeta_escritorio() / "Embudo de expedientes.url").unlink(missing_ok=True)
 
 
 # ---------------- Detección ----------------
@@ -173,16 +173,16 @@ def instalar(arval, descargas, autoarranque=True, accesos=True):
     prueba = arval / CARPETA_REGISTRO / ".prueba_escritura"
     prueba.write_text("ok", encoding="utf-8"); prueba.unlink()
     quitar_version_anterior()
-    destino = exe_actual()
+    exe = exe_actual()
     if getattr(sys, "frozen", False):
-        destino = CASA / f"{APP}.exe"
-        if exe_actual() != destino:
+        exe = CASA / f"{APP}.exe"
+        if exe_actual() != exe:
             detener_vigilante()
-            shutil.copy2(exe_actual(), destino)
-    cfg = {"arval": str(arval), "descargas": str(descargas), "procesados": str(CASA / "procesados"), "exe": str(destino),
+            shutil.copy2(exe_actual(), exe)
+    cfg = {"arval": str(arval), "descargas": str(descargas), "procesados": str(CASA / "procesados"), "exe": str(exe),
            "embudo_url": EMBUDO_URL, "configurado": datetime.now().isoformat(timespec="seconds")}
     CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=1), encoding="utf-8")
-    comando = f'"{destino}" vigilar' if getattr(sys, "frozen", False) else f'"{sys.executable}" "{destino}" vigilar'
+    comando = f'"{exe}" vigilar' if getattr(sys, "frozen", False) else f'"{sys.executable}" "{exe}" vigilar'
     import winreg
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, CLAVE_RUN) as k:
         if autoarranque:
@@ -193,15 +193,25 @@ def instalar(arval, descargas, autoarranque=True, accesos=True):
             except OSError:
                 pass
     if accesos:
-        escritorio = Path.home() / "Desktop"
+        escritorio = carpeta_escritorio()
         for nombre, url in (("Clasificador de archivos", EMBUDO_URL), ("Panel de reembolsos", PANEL_URL)):
             try:
                 (escritorio / f"{nombre}.url").write_text(f"[InternetShortcut]\nURL={url}\n", encoding="utf-8")
             except OSError:
                 pass
     log(f"configurado: arval={arval} descargas={descargas} autoarranque={autoarranque}")
-    iniciar_vigilante(destino)
+    iniciar_vigilante(exe)
     return cfg
+
+
+def carpeta_escritorio():
+    """Escritorio real del usuario (puede estar dentro de OneDrive si este respalda el escritorio)."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as k:
+            return Path(os.path.expandvars(winreg.QueryValueEx(k, "Desktop")[0]))
+    except OSError:
+        return Path.home() / "Desktop"
 
 
 def iniciar_vigilante(exe):
@@ -211,7 +221,9 @@ def iniciar_vigilante(exe):
 
 
 def detener_vigilante():
-    subprocess.run(["taskkill", "/F", "/IM", f"{APP}.exe", "/FI", f"PID ne {os.getpid()}"], capture_output=True)
+    # Cierra solo el vigilante anterior: el .exe de un archivo corre en dos procesos (cargador y programa) y ninguno de
+    # los dos de esta ventana se debe cerrar.
+    subprocess.run(["taskkill", "/F", "/IM", f"{APP}.exe", "/FI", f"PID ne {os.getpid()}", "/FI", f"PID ne {os.getppid()}"], capture_output=True)
 
 
 # ---------------- Vigilante ----------------
@@ -473,6 +485,9 @@ def ventana():
             instalar(a, d, v_auto.get(), v_acc.get())
         except OSError as e:
             estado.config(text=f"No pude escribir en la carpeta: {e}", foreground="#b3261e"); return
+        except Exception as e:  # noqa: BLE001 — cualquier otro fallo se muestra en la ventana y queda en el registro
+            log(f"error al configurar: {type(e).__name__}: {e}")
+            estado.config(text=f"No se pudo configurar ({type(e).__name__}: {e}). Manda una captura de esta ventana a Joel.", foreground="#b3261e"); return
         estado.config(foreground="#2e7d4f", text=f"Listo. El agente vigila {d} y guarda en {a}. Ya puedes cerrar esta ventana; "
                       "seguirá trabajando en segundo plano y arrancará solo al encender la computadora.")
         raiz.after(2500, refrescar)   # el vigilante tarda un momento en arrancar
