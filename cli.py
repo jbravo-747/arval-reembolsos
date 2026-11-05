@@ -30,7 +30,7 @@ import os
 import re
 import sys
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from reembolsos import clasificacion as cl
@@ -144,6 +144,16 @@ def apply(cfg):
     decisiones = _leer_json(cfg.trabajo / "decisiones.json", {})
     confirmaciones = _leer_json(cfg.trabajo / "confirmaciones.json", [])   # [{archivo, cliente}] confirmadas por Lau en el panel
     altas = _leer_json(cfg.trabajo / "altas.json", [])                     # [{nombre, correo, rfc, alias}] aprobadas por Lau
+    # Los expedientes se construyen en Arval; sin la marca de destino no se escribe nada (ver reembolsos/destino.py)
+    from reembolsos.destino import DestinoIncorrecto
+    from reembolsos.destino_graph import ArvalGraph
+    arval = ArvalGraph(g, cfg.ruta_arval)
+    if cfg.modo == "aplica":
+        try:
+            arval.verificar()
+        except DestinoIncorrecto as e:
+            (cfg.trabajo / "errores.txt").write_text(str(e), encoding="utf-8")
+            sys.exit(str(e))
     enc, filas, registros = _registros(g, archivo_id)
     por_index = {f["index"]: f["values"] for f in filas}
     catalogo = Catalogo(g.tabla_como_dicts(archivo_id, "tblClientes"))
@@ -200,10 +210,14 @@ def apply(cfg):
             if res["total"] and "Total" in enc:
                 cambios["Total"] = res["total"]
             if res["cliente"]:
-                carpeta = f"{cfg.clientes}/{res['cliente']}/{cl.mes_de(it['nombre_guardado'])}"
-                g.mover(it["item_id"], carpeta)
+                f_rec = _fecha_iso(it["fecha"]) or ahora().date()
+                cartera = getattr(por_nombre.get(res["cliente"]), "cartera", "")
+                carpeta, nombre, _ = arval.destino(res["cliente"], cartera, f_rec, _fecha_iso(res.get("fecha_doc")) or f_rec,
+                                                   res["tipo_documento"], Path(it["nombre_guardado"]).suffix.lower())
+                g.mover(it["item_id"], carpeta, nombre)
+                res["ruta_arval"] = f"{carpeta}/{nombre}"
                 cambios["Cliente"] = res["cliente"]
-                cambios["Ruta"] = f"{carpeta}/{it['nombre_guardado']}"
+                cambios["Ruta"] = res["ruta_arval"]
                 movidos += 1
             if it["index"] in por_index:
                 g.tabla_actualizar_fila(archivo_id, "tblRegistro", it["index"], enc, cambios, por_index[it["index"]])
@@ -213,7 +227,7 @@ def apply(cfg):
     # 3) Expedientes con el registro actualizado (en modo propone se simula con los resultados de esta corrida)
     registros_vista = _registros_con_resultados(registros, resultados) if cfg.modo != "aplica" else _registros(g, archivo_id)[2]
     expedientes = ex.agrupar(registros_vista, ahora().date())
-    snapshot = _snapshot(cfg, resultados, movidos, errores, expedientes, nuevos)
+    snapshot = _snapshot(cfg, resultados, movidos, errores, expedientes, nuevos, arval)
     _escribir_json(cfg.trabajo / "panel_snapshot.json", snapshot)
     if cfg.modo == "aplica":
         try:
@@ -257,7 +271,17 @@ def _bitacora(cfg, resultados, movidos, errores, altas):
     return eventos[:60]
 
 
-def _snapshot(cfg, resultados, movidos, errores, expedientes, altas=0):
+def _fecha_iso(texto):
+    try:
+        return date.fromisoformat(str(texto or "")[:10])
+    except ValueError:
+        return None
+
+
+def _snapshot(cfg, resultados, movidos, errores, expedientes, altas=0, arval=None):
+    def url_cliente(cliente):   # carpeta del cliente en Arval si ya se conoce; si no, la raíz de Arval
+        return cfg.url_carpeta((arval.ruta_conocida(cliente) if arval else None) or cfg.ruta_arval)
+
     por_prioridad = {1: 0, 2: 0, 3: 0}
     for r in resultados:
         por_prioridad[r["prioridad"]] += 1
@@ -274,11 +298,11 @@ def _snapshot(cfg, resultados, movidos, errores, expedientes, altas=0):
         "pendientes": [{"id": r["nombre_guardado"], "cliente": r["cliente"], "tipo": r["tipo_documento"], "confianza": r["confianza"],
                         "prioridad": r["prioridad"], "estado": r["estado"], "candidatos": r["candidatos"], "motivo": r["motivo"],
                         "alertas": r["alertas"], "remitente": r["remitente"], "asunto": r["asunto"], "fecha": r["fecha"], "hora": r["hora"],
-                        "carpeta_url": cfg.url_carpeta(f"{cfg.clientes}/{r['cliente']}/{cl.mes_de(r['nombre_guardado'])}" if r["cliente"] and cfg.modo == "aplica"
-                                                       else cfg.por_identificar)}
+                        "carpeta_url": cfg.url_carpeta(r["ruta_arval"].rsplit("/", 1)[0]) if r.get("ruta_arval")
+                                       else url_cliente(r["cliente"]) if r["cliente"] else cfg.url_carpeta(cfg.por_identificar)}
                        for r in resultados],
         "candidatos": [{"nombre": c, "archivos": a} for c, a in candidatos.items()],
-        "expedientes": [{**e, "carpeta_url": cfg.url_carpeta(f"{cfg.clientes}/{e['cliente']}/{e['inicio'][:7]}")} for e in expedientes],
+        "expedientes": [{**e, "carpeta_url": url_cliente(e["cliente"])} for e in expedientes],
         "bitacora": _bitacora(cfg, resultados, movidos, errores, altas),
         "latido": {"rutina": "clasificador", "hora": ahora().isoformat(timespec="seconds"),
                    "resultado": "error" if errores else "ok", "detalle": f"{len(resultados)} analizados, {movidos} movidos"},
@@ -538,7 +562,12 @@ def puente(cfg, entrada, destino, usar_ocr=True):
     Aplica las confirmaciones de Lau (trabajo/confirmaciones.json) y usa el catálogo semilla para conocer la cartera.
     Escribe trabajo/puente_panel.json (pendientes, bitácora, latido) y trabajo/puente_resumen.json (resumen del día)."""
     import csv
-    from reembolsos import puente as pt
+    from reembolsos import destino as dst, puente as pt
+    if cfg.modo == "aplica":
+        try:
+            dst.exigir(destino)
+        except dst.DestinoIncorrecto as e:
+            sys.exit(str(e))
     extra = []
     if (cfg.trabajo / "catalogo_semilla.csv").exists():
         with (cfg.trabajo / "catalogo_semilla.csv").open(encoding="utf-8-sig") as fh:

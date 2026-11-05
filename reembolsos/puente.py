@@ -147,6 +147,12 @@ def carpeta_evento(carpeta_cliente, fecha, en_corrida=None, destino=None, llegad
                 fechas[ev.name] = _fechas_de(ev, destino, llegadas)
     for nombre, lista in (en_corrida or {}).items():
         fechas.setdefault(nombre, []).extend(lista)
+    return elegir_evento(fechas, fecha)
+
+
+def elegir_evento(fechas, fecha):
+    """{nombre de evento: [fechas]} -> (evento con movimiento a VENTANA_DIAS o menos de fecha, False) o (uno nuevo
+    AAAA-MM_Reembolso AAAAMMDD, True). La usan el puente (carpetas locales) y la rutina en la nube (Graph)."""
     candidatos = []
     for nombre, lista in fechas.items():
         dist = min((abs((f - fecha).days) for f in lista), default=None)

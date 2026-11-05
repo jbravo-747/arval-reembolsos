@@ -155,14 +155,19 @@ a{color:var(--accent)}
 
         <section id="secSoltar">
           <div class="sec-head"><h2>Soltar archivos</h2><span class="muted">WhatsApp, escáner, lo que llegue fuera del correo</span></div>
-          <label class="zona" id="zona" for="archivos">
-            <strong>Arrastra aquí los archivos</strong> o toca para elegirlos.<br>PDF, fotos y XML. Se clasifican y se guardan en su expediente igual que los del correo.
-            <input type="file" id="archivos" multiple accept=".pdf,.xml,.png,.jpg,.jpeg,image/*,application/pdf,text/xml">
-          </label>
-          <div class="acciones">
-            <label for="clienteEntrada" class="muted">Cliente (si lo sabes):</label>
-            <select id="clienteEntrada"><option value="">Que lo detecte Claude</option></select>
-          </div>
+          <div class="muted">El <b>Clasificador de archivos</b> lee cada documento al momento, te pregunta solo cuando no sabe de quién es y lo guarda en la carpeta Arval de OneDrive.</div>
+          <div class="acciones"><a class="btn-link" href="https://claude.ai/artifact/EbazgykKVh3npeP7gyHuT3" target="_blank" rel="noopener">Abrir el clasificador</a></div>
+          <details class="info">
+            <summary>Subir sin clasificar (lo atiende la siguiente corrida)</summary>
+            <label class="zona" id="zona" for="archivos" style="margin-top:8px">
+              <strong>Arrastra aquí los archivos</strong> o toca para elegirlos.<br>PDF, fotos y XML. Se clasifican y se guardan en su expediente igual que los del correo.
+              <input type="file" id="archivos" multiple accept=".pdf,.xml,.png,.jpg,.jpeg,image/*,application/pdf,text/xml">
+            </label>
+            <div class="acciones">
+              <label for="clienteEntrada" class="muted">Cliente (si lo sabes):</label>
+              <select id="clienteEntrada"><option value="">Que lo detecte Claude</option></select>
+            </div>
+          </details>
           <div class="lista" id="entradas"></div>
         </section>
 

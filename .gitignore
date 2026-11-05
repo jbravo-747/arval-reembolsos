@@ -13,3 +13,6 @@ __pycache__/
 .pytest_cache/
 !powerautomate/*.zip
 powerautomate/salida/
+embudo/ocr/
+embudo/build/
+embudo/dist/

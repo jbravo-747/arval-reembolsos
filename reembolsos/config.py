@@ -21,23 +21,20 @@ class Config:
     client_secret: str
     usuario: str                 # buzón y OneDrive que usan las rutinas, p. ej. soluciones@arval.com.mx
     correo_lau: str              # destinatario del resumen diario
-    ruta_base: str               # carpeta raíz en OneDrive, p. ej. /Reembolsos
+    ruta_base: str               # carpeta de entrada en OneDrive (Power Automate, Excel de control), p. ej. /Reembolsos
     archivo_control: str         # nombre del Excel de control dentro de ruta_base
     modo: str                    # "propone" (no mueve ni escribe en Excel) o "aplica"
     trabajo: Path                # carpeta local temporal de la corrida
     paginas_max: int             # páginas de PDF que se leen por documento
     onedrive_web: str            # prefijo web de OneDrive para abrir carpetas desde el panel
+    ruta_arval: str = "/Arval"   # destino de los expedientes (ver reembolsos/destino.py), en el mismo OneDrive
 
     @property
     def por_identificar(self):
         return f"{self.ruta_base}/_Por identificar"
 
-    @property
-    def clientes(self):
-        return f"{self.ruta_base}/Clientes"
-
     def url_carpeta(self, ruta):
-        """URL para abrir una carpeta de OneDrive (ruta como /Reembolsos/Clientes/<cliente>/<mes>) en el navegador."""
+        """URL para abrir una carpeta de OneDrive (ruta como /Arval/<Cartera>/<Cliente>) en el navegador."""
         from urllib.parse import quote
         return self.onedrive_web + quote(ruta, safe="")
 
@@ -57,4 +54,5 @@ def cargar(credenciales=True):
         paginas_max=int(_env("PAGINAS_MAX", "3")),
         onedrive_web=_env("ONEDRIVE_WEB_BASE",
                           "https://arvalcommx-my.sharepoint.com/my?id=%2Fpersonal%2Fsoluciones%5Farval%5Fcom%5Fmx%2FDocuments"),
+        ruta_arval=_env("RUTA_ARVAL", "/Arval"),
     )

@@ -10,8 +10,9 @@ CFDI = """<?xml version="1.0"?><cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.
 
 
 class GraphFalso:
-    def __init__(self, cfg):
+    def __init__(self, cfg, con_marca=True):
         self.cfg = cfg
+        self.con_marca = con_marca
         self.escrituras = []
         self.enc = ["ID", "FechaRecepcion", "HoraRecepcion", "Remitente", "Cliente", "Asunto", "NombreOriginal", "NombreGuardado",
                     "Ruta", "TipoDocumento", "Total", "Estado", "Confianza", "Prioridad", "Observaciones", "EnResumen", "Enlace"]
@@ -21,6 +22,8 @@ class GraphFalso:
         ]
 
     def item_por_ruta(self, ruta):
+        if ruta.endswith("_DESTINO_OFICIAL_ARVAL") and not self.con_marca:
+            raise cli.GraphError("GET", ruta, 404, "no existe")
         return {"id": "control"}
 
     def tabla_filas(self, archivo_id, tabla):
@@ -35,6 +38,8 @@ class GraphFalso:
         return [dict(zip(enc, f["values"]), _index=f["index"]) for f in filas]
 
     def listar(self, ruta):
+        if not ruta.endswith("_Por identificar"):
+            return []   # Arval vacía
         return [{"id": "i1", "name": "20261008_0900_aaa_f.xml"}, {"id": "i2", "name": "20261008_0901_bbb_r.pdf"}]
 
     def descargar(self, item_id, destino):
@@ -100,4 +105,20 @@ def test_apply_aplica_mueve_y_actualiza(tmp_path, monkeypatch):
     tipos = [e[0] for e in falso["g"].escrituras]
     assert tipos.count("mover") == 2 and tipos.count("patch") == 2 and tipos.count("add") == 1 and "subir" in tipos
     mover_args = [e[1] for e in falso["g"].escrituras if e[0] == "mover"]
-    assert all(a[1].startswith("/Reembolsos/Clientes/Ana María Pérez López/2026-10") for a in mover_args)
+    # Se construye en Arval: cartera desconocida -> _Sin cartera, evento nuevo por la fecha de llegada, nombres estándar
+    assert sorted((a[1], a[2]) for a in mover_args) == [
+        ("/Arval/_Sin cartera/Ana María Pérez López/2026-10_Reembolso 20261008", "20261001_CFDI_01.xml"),
+        ("/Arval/_Sin cartera/Ana María Pérez López/2026-10_Reembolso 20261008", "20261008_DOC_01.pdf")]   # confirmado por Lau sin tipo: DOC
+
+
+def test_apply_sin_marca_de_destino_no_mueve_nada(tmp_path, monkeypatch):
+    import pytest
+    falso = {}
+    monkeypatch.setattr(cli, "Graph", lambda cfg: falso.setdefault("g", GraphFalso(cfg, con_marca=False)))
+    cfg = _cfg(tmp_path, "aplica")
+    cfg.trabajo.mkdir()
+    cli.pull(cfg)
+    with pytest.raises(SystemExit):
+        cli.apply(cfg)
+    assert falso["g"].escrituras == []
+    assert "_DESTINO_OFICIAL_ARVAL" in (cfg.trabajo / "errores.txt").read_text(encoding="utf-8")

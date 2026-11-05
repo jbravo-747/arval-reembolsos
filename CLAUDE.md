@@ -14,6 +14,9 @@ ejecutan rutinas de Claude en la nube y sesiones de Claude Code. Léelo completo
   estructura estándar con copias renombradas (`cli.py semilla`). Nunca modifica la carpeta original.
 - `docs/`: plan, prerrequisitos, guía de ejecución, instrucciones de cada rutina.
 - `panel/panel.html`: artifact "Panel de reembolsos" (base de datos compartida `db`).
+- `reembolsos/destino.py`: destino único de los expedientes (carpeta Arval del OneDrive de soluciones@). Lo que escribe en una
+  copia sincronizada exige la marca `_DESTINO_OFICIAL_ARVAL`; nunca construyas expedientes en otra carpeta.
+- `embudo/`: Clasificador de archivos (artifact) y su agente `ArvalClasificador.exe`; ver `embudo/README.md`.
 
 ## Reglas que no se negocian
 
@@ -48,7 +51,10 @@ ejecutan rutinas de Claude en la nube y sesiones de Claude Code. Léelo completo
 4. Antes de aplicar, trae del panel lo que Lau decidió (ver `docs/rutinas/clasificador.prompt.md`): confirmaciones de
    cliente → `trabajo/confirmaciones.json` (`[{"archivo", "cliente"}]`), altas aprobadas → `trabajo/altas.json`
    (`[{"nombre", "correo", "rfc", "alias"}]`).
-5. `python cli.py apply` (toma el modo del entorno). Calcula confianza, prioridad, estado, alertas de calidad
+5. `python cli.py apply` (toma el modo del entorno). En modo aplica mueve cada documento con cliente a la carpeta Arval
+   (`RUTA_ARVAL`): `<Cartera>/<Cliente>/<AAAA-MM_Evento>/<AAAAMMDD>_<TIPO>_<nn>.ext`, y antes comprueba la marca
+   `_DESTINO_OFICIAL_ARVAL`; si falta, no mueve nada y termina con error. Lo que no tiene cliente se queda en
+   `/Reembolsos/_Por identificar`. Calcula confianza, prioridad, estado, alertas de calidad
    (RFC distinto al del catálogo, documento antiguo, CFDI sin total) y expedientes (documentos del mismo cliente en una
    ventana de 10 días, con lista de faltantes). Luego publica `trabajo/panel_snapshot.json` en la base de datos del panel
    y registra el latido: `python cli.py latido clasificador ok "<detalle>"`.

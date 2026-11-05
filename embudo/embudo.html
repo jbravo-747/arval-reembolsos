@@ -1,0 +1,662 @@
+<title>Clasificador de archivos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Open+Sans:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: boca del embudo (zona para soltar) arriba, riel de etapas debajo, luego "Te pregunto" y "Listos para OneDrive" en dos columnas; historial al final.
+   Colores de Arval (arval.com.mx): azul marino #173A6D como principal, azul #13518E, rojo del logo #CC3333 solo como marca; Montserrat y Open Sans. */
+:root{
+  --bg:#f2f5f9; --surface:#ffffff; --surface-2:#e7edf5; --fg:#14223a; --muted:#58595b; --line:#d3dbe6;
+  --accent:#173a6d; --accent-2:#13518e; --accent-ink:#ffffff; --accent-soft:#dfe8f4; --marca:#cc3333; --placa:#ffffff;
+  --ok:#2e7d4f; --ok-soft:#dbf0e3; --warn:#8a4b00; --warn-soft:#fbe9c7; --crit:#b3261e; --crit-soft:#f8dcd9;
+  --display:"Montserrat",system-ui,sans-serif; --body:"Open Sans",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0c1524; --surface:#132036; --surface-2:#1a2b46; --fg:#e7edf6; --muted:#a3afc0; --line:#2a3c5a;
+  --accent:#8db2e6; --accent-2:#6f9fdf; --accent-ink:#0a1730; --accent-soft:#1b3157; --marca:#e57373; --placa:#f4f6fa;
+  --ok:#6ccf93; --ok-soft:#153726; --warn:#f2b85a; --warn-soft:#3d2c0c; --crit:#ff8d85; --crit-soft:#431b18;
+  color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0c1524; --surface:#132036; --surface-2:#1a2b46; --fg:#e7edf6; --muted:#a3afc0; --line:#2a3c5a;
+  --accent:#8db2e6; --accent-2:#6f9fdf; --accent-ink:#0a1730; --accent-soft:#1b3157; --marca:#e57373; --placa:#f4f6fa;
+  --ok:#6ccf93; --ok-soft:#153726; --warn:#f2b85a; --warn-soft:#3d2c0c; --crit:#ff8d85; --crit-soft:#431b18;
+  color-scheme:dark }
+.marca{display:flex;align-items:center;gap:14px;min-width:0}
+.marca img{width:52px;height:auto;flex:none;background:var(--placa);border-radius:8px;padding:5px}
+header{border-bottom:3px solid var(--marca);padding-bottom:12px}
+h1{color:var(--accent)}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 40px;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+h1{font-size:1.5rem;font-weight:800;letter-spacing:-.01em}
+h2{font-size:1.05rem;font-weight:700}
+.muted{color:var(--muted)}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 20px;justify-content:space-between}
+.estados{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:.85rem;font-weight:600;background:var(--surface-2);color:var(--fg);border:1px solid var(--line)}
+.chip .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.chip.ok .dot{background:var(--ok)} .chip.warn .dot{background:var(--warn)} .chip.crit .dot{background:var(--crit)}
+.aviso{padding:10px 12px;border-radius:8px;background:var(--warn-soft);color:var(--fg);font-size:.9rem}
+
+/* Boca del embudo */
+.boca{position:relative;display:block;cursor:pointer;border:2px dashed var(--accent);border-radius:18px 18px 60px 60px;background:linear-gradient(180deg,var(--accent-soft),var(--surface) 85%);padding:30px 20px 34px;text-align:center;transition:background .15s,border-color .15s,transform .15s}
+.boca:hover{border-style:solid}
+.boca.sobre{background:var(--accent-soft);border-style:solid;transform:scale(1.01)}
+.boca input{display:none}
+.boca .grande{font-family:var(--display);font-size:1.35rem;font-weight:800;display:block}
+.boca .sub{color:var(--muted);display:block;margin-top:4px}
+.boca .cuello{display:block;width:64px;height:14px;margin:16px auto 0;border-radius:0 0 10px 10px;background:var(--marca)}
+@media (prefers-reduced-motion:reduce){.boca{transition:none}.boca.sobre{transform:none}}
+
+/* Riel de etapas: la secuencia real que recorre cada archivo */
+.riel{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+@media (max-width:760px){.riel{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.etapa{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+.etapa .n{font-family:var(--display);font-weight:800;font-size:1.5rem;font-variant-numeric:tabular-nums;line-height:1.1}
+.etapa .l{font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.etapa.activa{border-color:var(--warn);background:var(--warn-soft)}
+.etapa.pregunta.activa{border-color:var(--crit);background:var(--crit-soft)} .etapa.pregunta.activa .n{color:var(--crit)}
+.etapa.listos.activa{border-color:var(--ok);background:var(--ok-soft)} .etapa.listos.activa .n{color:var(--ok)}
+
+.cols{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:900px){.cols{grid-template-columns:1fr}}
+section{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.sec-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+.lista{display:flex;flex-direction:column;gap:10px}
+.vacio{padding:18px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);text-align:center}
+
+.archivo{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.archivo .fila{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 10px;align-items:baseline}
+.archivo .nom{font-weight:600;overflow-wrap:anywhere;min-width:0}
+.archivo .m{font-size:.86rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 12px}
+.ruta{font-family:var(--mono);font-size:.78rem;background:var(--surface-2);border-radius:6px;padding:4px 8px;overflow-wrap:anywhere;color:var(--fg)}
+.pill{font-size:.74rem;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.pill.alta{background:var(--ok-soft);color:var(--ok)} .pill.media,.pill.baja{background:var(--warn-soft);color:var(--warn)} .pill.ninguna,.pill.error{background:var(--crit-soft);color:var(--crit)}
+.pill.curso{background:var(--accent-soft);color:var(--accent)}
+.barra{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden}
+.barra span{display:block;height:100%;background:var(--accent);transition:width .3s}
+@media (prefers-reduced-motion:reduce){.barra span{transition:none}}
+
+.duda{border:1px solid var(--crit);border-left-width:4px;background:var(--surface)}
+.duda .q{font-family:var(--display);font-weight:700;font-size:1rem}
+.opciones{display:flex;flex-direction:column;gap:6px}
+button.op{font:inherit;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);cursor:pointer}
+button.op:hover{border-color:var(--accent)}
+button.op .k{font-weight:600;overflow-wrap:anywhere}
+button.op .r{grid-column:1 / -1;font-size:.82rem;color:var(--muted)}
+button.op .s{font-size:.78rem;color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
+.campos{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.campos label{font-size:.84rem;color:var(--muted)}
+select,input[type=text],input[type=search],input[type=date]{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0;max-width:100%}
+input[type=search]{width:100%}
+button.btn{font:inherit;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
+button.btn.sec{background:transparent;color:var(--accent)}
+button.btn.min{padding:3px 9px;font-size:.85rem}
+button.btn:disabled{opacity:.5;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible,.boca:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+details.mas summary{cursor:pointer;color:var(--muted);font-weight:600;font-size:.88rem}
+details.mas[open] summary{margin-bottom:8px}
+.envio{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:8px;background:var(--accent-soft)}
+.envio strong{font-family:var(--display)}
+table.t{border-collapse:collapse;width:100%;font-size:.88rem}
+table.t th{text-align:left;font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:4px 8px;border-bottom:1px solid var(--line)}
+table.t td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+.tabla-scroll{overflow-x:auto}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:.9rem;opacity:0;transition:opacity .2s;pointer-events:none;max-width:calc(100% - 32px)}
+.toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+ol.pasos{margin:0;padding-left:20px;font-size:.92rem;display:flex;flex-direction:column;gap:4px}
+code{font-family:var(--mono);font-size:.85em}
+a{color:var(--accent)}
+[hidden]{display:none!important}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="marca">
+      <img src="marca/arval-logo.png" alt="Arval" width="52" height="50">
+      <div style="min-width:0">
+      <h1>Clasificador de archivos</h1>
+      <div class="muted">Suelta los documentos de reembolso: se leen, se clasifican por asegurado y se guardan en su expediente de OneDrive. Parte del <a href="https://claude.ai/artifact/MWqDtpw1z7ZFojfwmtmsRs" target="_blank" rel="noopener">Panel de reembolsos</a>.</div>
+      </div>
+    </div>
+    <div class="estados" id="estados">
+      <span class="chip" id="chOcr"><span class="dot"></span>Lectura: preparando</span>
+      <span class="chip" id="chIa"><span class="dot"></span>Claude: sin usar</span>
+      <span class="chip" id="chBase"><span class="dot"></span>Asegurados: cargando</span>
+    </div>
+  </header>
+
+  <div id="avisoDb" class="aviso" hidden>Esta vista no se conecta a la base de asegurados. Ábrela desde tu cuenta de Arval para clasificar.</div>
+
+  <label class="boca" id="boca" for="archivos">
+    <span class="grande">Suelta aquí los archivos</span>
+    <span class="sub">o toca para elegirlos · PDF, fotos (JPG, PNG) y XML de facturas · varios a la vez</span>
+    <span class="cuello" aria-hidden="true"></span>
+    <input type="file" id="archivos" multiple accept=".pdf,.xml,.png,.jpg,.jpeg,.webp,.bmp,application/pdf,text/xml,image/*">
+  </label>
+
+  <div class="riel" id="riel" aria-label="Etapas del clasificador">
+    <div class="etapa" data-e="recibidos"><div class="n">0</div><div class="l">Recibidos</div></div>
+    <div class="etapa" data-e="leyendo"><div class="n">0</div><div class="l">Leyendo</div></div>
+    <div class="etapa" data-e="analizando"><div class="n">0</div><div class="l">Analizando</div></div>
+    <div class="etapa pregunta" data-e="pregunta"><div class="n">0</div><div class="l">Te pregunto</div></div>
+    <div class="etapa listos" data-e="listos"><div class="n">0</div><div class="l">Listos</div></div>
+    <div class="etapa" data-e="enviados"><div class="n">0</div><div class="l">En OneDrive</div></div>
+  </div>
+
+  <div class="cols">
+    <section>
+      <div class="sec-head"><h2>Te pregunto</h2><span class="muted" id="notaDudas"></span></div>
+      <div class="lista" id="dudas"><div class="vacio">Cuando un documento no deja claro de qué asegurado es, aparece aquí con las opciones más probables para que elijas.</div></div>
+      <div class="lista" id="enCurso"></div>
+    </section>
+
+    <section>
+      <div class="sec-head"><h2>Listos para OneDrive</h2><span class="muted" id="notaListos"></span></div>
+      <div class="envio" id="envio" hidden>
+        <span><strong id="nListos">0</strong> archivo(s) clasificados</span>
+        <button class="btn" type="button" id="btnEnviar">Guardar en OneDrive</button>
+      </div>
+      <div class="lista" id="listos"><div class="vacio">Los documentos clasificados esperan aquí. Con <b>Guardar en OneDrive</b> se descargan en un paquete y el agente de Arval los acomoda en <code>Arval / Cartera / Cliente / Evento</code>.</div></div>
+      <details class="mas" id="ayudaAgente">
+        <summary>¿Cómo llegan a OneDrive?</summary>
+        <ol class="pasos">
+          <li>El paquete <code>ARVAL_EMBUDO_….zip</code> se guarda en tu carpeta de Descargas.</li>
+          <li>El agente <b>ArvalClasificador</b> (se instala una vez con <code>ArvalClasificador.exe</code>) lo detecta en segundos.</li>
+          <li>Cada archivo queda en la carpeta compartida <code>Arval</code> con el nombre estándar <code>AAAAMMDD_TIPO_nn</code>, en el evento abierto del asegurado o en uno nuevo.</li>
+          <li>OneDrive lo sube a la nube. El paquete se archiva y no queda copia en Descargas.</li>
+        </ol>
+      </details>
+    </section>
+  </div>
+
+  <section>
+    <div class="sec-head"><h2>Historial</h2><span class="muted" id="notaHist">lo clasificado aquí, por cualquier persona</span></div>
+    <div id="historial" class="vacio">Aquí queda el registro de cada documento: a quién se asignó, quién lo decidió y cuándo se mandó a OneDrive.</div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const normaliza = (s) => String(s || "").normalize("NFD").replace(/\p{M}/gu, "").toUpperCase().replace(/[^A-Z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  const toast = (msg) => { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), 2800); };
+  const horaCorta = (iso) => { const d = iso ? new Date(iso) : null; return d && !isNaN(d) ? d.toLocaleString("es-MX", {day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit"}) : ""; };
+  const chip = (id, clase, texto) => { const c = $(id); c.className = "chip " + clase; c.innerHTML = `<span class="dot"></span>${esc(texto)}`; };
+
+  // Mismos tipos y abreviaturas que reembolsos/clasificacion.py y organizacion.py (TIPO_CORTO)
+  const TIPOS = ["CFDI factura", "CFDI recibo de honorarios", "CFDI otro", "Factura PDF", "Receta", "Informe médico", "Estudio o resultado",
+    "Identificación", "Operación de seguro (no reembolso)", "Formato de reclamación", "Comprobante de pago", "Finiquito o dictamen", "Otro"];
+  const TIPO_CORTO = {"CFDI factura":"CFDI","CFDI recibo de honorarios":"CFDI-HON","CFDI otro":"CFDI-OTRO","Factura PDF":"FACTURA","Receta":"RECETA",
+    "Informe médico":"INFORME","Estudio o resultado":"ESTUDIO","Identificación":"ID","Operación de seguro (no reembolso)":"SEGURO",
+    "Formato de reclamación":"RECLAMACION","Comprobante de pago":"PAGO","Finiquito o dictamen":"FINIQUITO","Otro":"DOC"};
+  const TIPO_POR_PALABRA = [["RECETA","Receta"],["INFORME MEDICO","Informe médico"],["NOTA MEDICA","Informe médico"],["RESULTADO","Estudio o resultado"],
+    ["LABORATORIO","Estudio o resultado"],["ESTUDIO","Estudio o resultado"],["RADIOLOG","Estudio o resultado"],["FINIQUITO","Finiquito o dictamen"],
+    ["DICTAMEN","Finiquito o dictamen"],["ENDOSO","Operación de seguro (no reembolso)"],["CARATULA","Operación de seguro (no reembolso)"],
+    ["AVISO DE ACCIDENTE","Formato de reclamación"],["RECLAMACION","Formato de reclamación"],["INFORME DEL MEDICO","Formato de reclamación"],
+    ["CREDENCIAL PARA VOTAR","Identificación"],["INE","Identificación"],["PASAPORTE","Identificación"],["COMPROBANTE DE PAGO","Comprobante de pago"],
+    ["TRANSFERENCIA","Comprobante de pago"],["FACTURA","Factura PDF"],["CFDI","Factura PDF"],["FOLIO FISCAL","Factura PDF"]];
+  const TIPOS_OK = /\.(pdf|xml|png|jpe?g|webp|bmp)$/i;
+  const MAX_TEXTO_IA = 7000;   // caracteres del documento que ve Claude (no se guardan)
+  const PALABRAS_VACIAS = new Set(["DE","DEL","LA","LAS","LOS","Y","EL","SA","CV","SAPI","S","A","C","V"]);
+
+  const estado = { items: new Map(), cola: [], trabajando: false, asegurados: [], catalogo: [], carteraDe: new Map(), historial: [], uid: null };
+  let db = null, sample = null, downloads = null;
+
+  // ---------- Base de asegurados (copia del panel: asegurados/lista y catalogo/lista) ----------
+  function prepararBase(lista){
+    estado.asegurados = (lista || []).map(a => {
+      const fichas = (n) => normaliza(n).split(" ").filter(w => w.length >= 3 && !PALABRAS_VACIAS.has(w));
+      return { ...a, _nombre: normaliza(a.nombre), _tokens: fichas(a.nombre), _rfc: normaliza(a.rfc).replace(/ /g, ""),
+        _personas: (a.personas || []).map(p => ({ nombre: p, _n: normaliza(p), _tokens: fichas(p) })),
+        _polizas: (a.polizas || []).map(p => normaliza(p).replace(/ /g, "")).filter(p => p.length >= 5),
+        _txt: normaliza([a.nombre, a.rfc, a.cliente, ...(a.personas || []), ...(a.polizas || [])].join(" ")) };
+    });
+    estado.carteraDe = new Map(estado.asegurados.map(a => [a.cliente, a.cartera]));
+    pintarBase();
+  }
+  function pintarBase(){
+    const n = estado.asegurados.length;
+    if (n) chip("chBase", "ok", `Asegurados: ${n} · ${estado.catalogo.length} clientes`);
+    else chip("chBase", db ? "warn" : "crit", db ? "Asegurados: sin cargar" : "Asegurados: sin conexión");
+  }
+
+  // Coincidencias locales: RFC, nombre completo, póliza o persona relacionada (dependiente, titular)
+  function coincidencias(texto){
+    const N = " " + normaliza(texto) + " ";
+    const sinEsp = N.replace(/ /g, "");
+    const palabras = new Set(N.trim().split(" "));
+    const porCliente = new Map();
+    const anota = (a, score, razon) => {
+      const k = a.cliente; if (!k) return;
+      const prev = porCliente.get(k);
+      if (!prev || prev.score < score) porCliente.set(k, { cliente: k, cartera: a.cartera, asegurado: a.nombre, score, razon });
+    };
+    for (const a of estado.asegurados) {
+      if (a._rfc.length >= 12 && sinEsp.includes(a._rfc)) anota(a, 100, `RFC ${a.rfc}`);
+      if (a._tokens.length >= 2 && N.includes(" " + a._nombre + " ")) anota(a, 92, "nombre completo del asegurado");
+      else if (a._tokens.length >= 2 && a._tokens.every(w => palabras.has(w))) anota(a, 78, "todas las palabras del nombre");
+      else if (a._tokens.length >= 3 && a._tokens.filter(w => palabras.has(w)).length >= a._tokens.length - 1) anota(a, 55, "nombre casi completo");
+      for (const p of a._polizas) if (palabras.has(p) || sinEsp.includes(p) && p.length >= 8) anota(a, 85, `póliza ${p}`);
+      for (const p of a._personas) {
+        if (p._tokens.length >= 2 && N.includes(" " + p._n + " ")) anota(a, 80, `relacionado: ${p.nombre}`);
+        else if (p._tokens.length >= 3 && p._tokens.every(w => palabras.has(w))) anota(a, 65, `relacionado: ${p.nombre}`);
+      }
+    }
+    return [...porCliente.values()].sort((x, y) => y.score - x.score).slice(0, 6);
+  }
+
+  // ---------- Lectura: CFDI, capa de texto del PDF y OCR local (Tesseract en este navegador) ----------
+  let ocrPromesa = null;
+  function ocrWorker(){
+    if (!ocrPromesa) {
+      if (!window.Tesseract) return Promise.reject(new Error("sin OCR"));
+      // El diccionario de español va publicado junto a la página como ocr/spa-traineddata.wasm (el servidor de artifacts
+      // no sirve .traineddata): el worker redirige la petición de spa.traineddata a ese archivo.
+      const base = new URL("ocr/", location.href).href;
+      const puente = `const f0 = self.fetch.bind(self); self.fetch = (u, o) => f0(String(u).replace(/spa\\.traineddata$/, "spa-traineddata.wasm"), o);
+importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js");`;
+      const workerPath = URL.createObjectURL(new Blob([puente], { type: "application/javascript" }));
+      ocrPromesa = Tesseract.createWorker("spa", 1, {
+        workerPath, workerBlobURL: false, langPath: base.replace(/\/$/, ""), gzip: false, cacheMethod: "none",
+        corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1",
+      }).then(w => { chip("chOcr", "ok", "Lectura: OCR local listo"); return w; })
+        .catch(e => { ocrPromesa = null; chip("chOcr", "crit", "Lectura: OCR no disponible"); throw e; });
+    }
+    return ocrPromesa;
+  }
+  async function ocrDe(imagen){
+    const w = await ocrWorker();
+    const r = await w.recognize(imagen);
+    return r.data.text || "";
+  }
+  function leerCfdi(texto){
+    const x = new DOMParser().parseFromString(texto, "application/xml");
+    const comp = x.documentElement;
+    if (!comp || !/Comprobante$/.test(comp.nodeName)) return null;
+    const uno = (n) => x.getElementsByTagNameNS("*", n)[0];
+    const em = uno("Emisor"), re = uno("Receptor");
+    const at = (el, n) => el ? (el.getAttribute(n) || "") : "";
+    const tc = at(comp, "TipoDeComprobante");
+    const tipo = tc === "I" ? (at(em, "RegimenFiscal") === "612" ? "CFDI recibo de honorarios" : "CFDI factura") : "CFDI otro";
+    return { tipo, fecha: at(comp, "Fecha").slice(0, 10), total: at(comp, "Total"), receptor: at(re, "Nombre"), rfc: at(re, "Rfc"), emisor: at(em, "Nombre") };
+  }
+  async function leerPdf(it){
+    const pdf = await pdfjsLib.getDocument({ data: await it.file.arrayBuffer(), isEvalSupported: false }).promise;
+    let texto = "";
+    const paginas = Math.min(pdf.numPages, 3);
+    for (let i = 1; i <= paginas; i++) {
+      const c = await (await pdf.getPage(i)).getTextContent();
+      texto += c.items.map(t => t.str).join(" ") + "\n";
+    }
+    if (texto.replace(/\s/g, "").length >= 80) return { texto, metodo: "texto del PDF" };
+    // Escaneo: se dibujan hasta 2 páginas y se leen con OCR local
+    let ocr = "";
+    for (let i = 1; i <= Math.min(pdf.numPages, 2); i++) {
+      const pag = await pdf.getPage(i);
+      const vp = pag.getViewport({ scale: 2 });
+      const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+      await pag.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+      it.avance = 0.3 + 0.3 * i; pintar();
+      ocr += await ocrDe(cv) + "\n";
+    }
+    return { texto: ocr, metodo: "OCR (escaneo)" };
+  }
+  function tipoPorTexto(N){
+    for (const [p, t] of TIPO_POR_PALABRA) if (new RegExp("\\b" + p).test(N)) return t;
+    return "";
+  }
+  function fechaPorTexto(N){
+    const meses = {ENE:1,FEB:2,MAR:3,ABR:4,MAY:5,JUN:6,JUL:7,AGO:8,SEP:9,SEPT:9,OCT:10,NOV:11,DIC:12};
+    let m = N.match(/\b(20\d{2}) (\d{2}) (\d{2})\b/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = N.match(/\b(\d{1,2}) (\d{1,2}) (20\d{2})\b/); if (m && +m[2] <= 12) return `${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+    m = N.match(/\b(\d{1,2}) (?:DE )?(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEPT?|OCT|NOV|DIC)[A-Z]* (?:DE )?(20\d{2})\b/);
+    if (m) return `${m[3]}-${String(meses[m[2]]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+    return "";
+  }
+
+  // ---------- Análisis con Claude: tipo, fecha y asegurado, solo con metadatos de respuesta ----------
+  async function preguntarIA(it, texto, locales){
+    if (!sample) return null;
+    const prompt = `Eres el clasificador de documentos de reembolsos de gastos médicos de Arval México (corredor de seguros).
+Recibes el texto de UN documento (puede traer errores de OCR) y candidatos que un buscador encontró en la base de asegurados.
+Responde SOLO un objeto JSON con estas claves:
+- "cliente": nombre EXACTO de la lista CLIENTES a quien pertenece el documento (el asegurado titular, aunque el paciente sea un dependiente), o null si el documento no lo nombra con claridad.
+- "nombre_leido": nombre del asegurado, paciente o receptor tal como aparece en el documento, o null.
+- "tipo": uno de ${JSON.stringify(TIPOS)}.
+- "fecha_doc": fecha de emisión AAAA-MM-DD, o null.
+- "rfc": RFC del asegurado o receptor si aparece, o null.
+- "total": importe total si es factura o recibo (número), o null.
+- "confianza": "Alta" (nombre completo o RFC del cliente en el documento), "Media" (nombre de un relacionado del candidato o nombre casi completo), "Baja" (coincidencia parcial o dudosa) o "Ninguna".
+- "motivo": una frase corta de por qué, SIN diagnósticos, medicamentos, padecimientos ni montos, y SIN nombres de personas (di "el paciente", "el receptor", "un dependiente").
+No inventes. Si dudas entre dos clientes, usa confianza "Baja".
+
+ARCHIVO: ${it.nombre}
+CANDIDATOS: ${JSON.stringify(locales.map(c => ({ cliente: c.cliente, asegurado: c.asegurado, razon: c.razon })))}
+CLIENTES: ${JSON.stringify(estado.catalogo)}
+TEXTO DEL DOCUMENTO:
+${texto.slice(0, MAX_TEXTO_IA)}`;
+    try {
+      const r = await sample.json(prompt, { modelTier: "default" });
+      chip("chIa", "ok", "Claude: analizando contigo");
+      return r && typeof r === "object" ? r : null;
+    } catch (e) {
+      if (e && e.code === "not_granted") { sample = null; chip("chIa", "warn", "Claude: sin permiso, solo reglas locales"); }
+      else if (e && e.code === "rate_limited") chip("chIa", "warn", "Claude: ocupado, reintenta en un momento");
+      else chip("chIa", "warn", "Claude: no respondió");
+      return null;
+    }
+  }
+
+  // Combina buscador local y Claude. Solo se clasifica sin preguntar con confianza Alta respaldada por ambos (o por RFC/CFDI).
+  function decidir(it, locales, ia, cfdi){
+    const enCatalogo = (c) => c && estado.catalogo.includes(c);
+    const top = locales[0], seg = locales[1];
+    const unico = top && (!seg || seg.score <= top.score - 15);
+    const iaCliente = ia && enCatalogo(ia.cliente) ? ia.cliente : null;
+    let cliente = null, confianza = "Ninguna", por = "no identificado";
+    if (top && top.score >= 90 && unico && (!iaCliente || iaCliente === top.cliente)) {
+      cliente = top.cliente; confianza = "Alta"; por = top.score === 100 ? "RFC" : "nombre completo";
+    } else if (iaCliente && ia.confianza === "Alta" && locales.some(c => c.cliente === iaCliente && c.score >= 65)) {
+      cliente = iaCliente; confianza = "Alta"; por = "nombre completo (Claude y buscador)";
+    } else if (iaCliente) {
+      cliente = iaCliente; confianza = ["Media", "Baja"].includes(ia.confianza) ? ia.confianza : "Media"; por = "lectura de Claude";
+    } else if (top) {
+      cliente = top.cliente; confianza = top.score >= 75 ? "Media" : "Baja"; por = top.razon;
+    }
+    it.sugerido = cliente;
+    it.confianza = confianza;
+    it.identificado_por = por;
+    it.nombre_leido = (ia && ia.nombre_leido) || (cfdi && cfdi.receptor) || "";
+    it.motivo = (ia && ia.motivo) || (top ? top.razon : cfdi ? "receptor del CFDI no está en la base" : "sin nombre reconocible");
+    it.candidatos = locales;
+    if (iaCliente && !locales.some(c => c.cliente === iaCliente)) it.candidatos = [{ cliente: iaCliente, cartera: estado.carteraDe.get(iaCliente) || "", score: 0, razon: "propuesto por Claude" }, ...locales];
+    if (confianza === "Alta") { it.cliente = cliente; it.etapa = "listo"; it.decidido_por = "embudo"; }
+    else it.etapa = "pregunta";
+  }
+
+  async function procesar(it){
+    it.etapa = "leyendo"; it.avance = 0.15; pintar();
+    let texto = "", cfdi = null;
+    try {
+      if (/\.xml$/i.test(it.nombre)) {
+        cfdi = leerCfdi(await it.file.text());
+        if (!cfdi) throw new Error("XML que no es CFDI");
+        texto = `${cfdi.receptor} ${cfdi.rfc}`; it.metodo = "CFDI";
+      } else if (/\.pdf$/i.test(it.nombre)) {
+        const r = await leerPdf(it); texto = r.texto; it.metodo = r.metodo;
+      } else {
+        it.avance = 0.4; pintar();
+        texto = await ocrDe(it.file); it.metodo = "OCR (foto)";
+      }
+    } catch (e) {
+      it.metodo = "sin lectura"; it.aviso = /OCR/.test(String(e && e.message)) ? "No se pudo leer con OCR en esta vista" : "No se pudo leer el archivo";
+    }
+    const N = normaliza(texto);
+    it.tipo = cfdi ? cfdi.tipo : tipoPorTexto(N) || "Otro";
+    it.fecha_doc = cfdi ? cfdi.fecha : fechaPorTexto(N);
+    it.rfc = cfdi ? cfdi.rfc : ""; it.total = cfdi ? cfdi.total : "";
+    const locales = N ? coincidencias(texto) : [];
+    let ia = null;
+    if (!cfdi && N.length >= 40) {
+      it.etapa = "analizando"; it.avance = 0.8; pintar();
+      ia = await preguntarIA(it, texto, locales);
+      if (ia) {
+        if (TIPOS.includes(ia.tipo)) it.tipo = ia.tipo;
+        if (/^20\d{2}-\d{2}-\d{2}$/.test(ia.fecha_doc || "")) it.fecha_doc = ia.fecha_doc;
+        if (ia.rfc) it.rfc = String(ia.rfc).toUpperCase().replace(/[^A-Z0-9&Ñ]/g, "");
+        if (ia.total != null && ia.total !== "") it.total = String(ia.total);
+      }
+    }
+    texto = ""; // el contenido no se guarda ni sale de esta función
+    decidir(it, locales, ia, cfdi);
+    it.avance = 1;
+    await guardarEntrada(it);
+    if (it.etapa === "listo") await aprender(it);
+    pintar();
+  }
+
+  async function siguiente(){
+    if (estado.trabajando) return;
+    estado.trabajando = true;
+    while (estado.cola.length) {
+      const it = estado.cola.shift();
+      try { await procesar(it); } catch (e) { it.etapa = "error"; it.aviso = "Falló el análisis; vuelve a soltarlo"; pintar(); }
+    }
+    estado.trabajando = false;
+  }
+
+  async function huella(file){
+    const h = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return [...new Uint8Array(h)].slice(0, 12).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function soltar(lista){
+    for (const f of Array.from(lista)) {
+      if (!TIPOS_OK.test(f.name)) { toast(`${f.name}: solo PDF, fotos o XML`); continue; }
+      if (f.size > 25 * 1024 * 1024) { toast(`${f.name}: pesa más de 25 MB`); continue; }
+      const id = await huella(f);
+      if (estado.items.has(id)) { toast(`${f.name} ya está en el clasificador`); continue; }
+      const previo = estado.historial.find(h => h._id === id && ["enviado", "descartado"].includes(h.estado));
+      const it = { id, file: f, nombre: f.name, tamano: f.size, etapa: "recibido", avance: 0.05, hora: new Date().toISOString(),
+        aviso: previo ? `Ya se había ${previo.estado === "enviado" ? "mandado a OneDrive" : "descartado"} el ${horaCorta(previo.hora_envio || previo.hora)}` : "" };
+      estado.items.set(id, it); estado.cola.push(it);
+    }
+    pintar(); siguiente();
+  }
+
+  // ---------- Base de datos del embudo ----------
+  const ENTRADA = (it) => ({ nombre: it.nombre, tamano: it.tamano, estado: it.etapa === "listo" ? (it.cliente ? "clasificado" : "por identificar") : it.etapa === "pregunta" ? "por confirmar" : it.etapa,
+    cliente: it.cliente || null, cartera: it.cliente ? (estado.carteraDe.get(it.cliente) || "") : "", sugerido: it.sugerido || null,
+    tipo: it.tipo || "Otro", fecha_doc: it.fecha_doc || "", rfc: it.rfc || "", total: it.total || "", confianza: it.confianza || "",
+    identificado_por: it.identificado_por || "", candidato_cliente: it.candidato_cliente || null, nombre_leido: it.nombre_leido || "",
+    motivo: it.motivo || "", metodo: it.metodo || "", decidido_por: it.decidido_por || "", por: estado.uid, hora: it.hora, actualizado: new Date().toISOString() });
+  async function guardarEntrada(it, extra){
+    if (!db) return;
+    try { await db.doc("entradas/" + it.id).set({ ...ENTRADA(it), ...(extra || {}) }); }
+    catch (e) { toast(e && e.code === "quota_exceeded" ? "La base del clasificador está llena; avisa a Joel" : "No se guardó el registro; se reintenta al confirmar"); }
+  }
+  // Datos nuevos del asegurado (RFC que faltaba) quedan como propuesta para la base de asegurados
+  async function aprender(it){
+    if (!db || !it.cliente || !/^[A-ZÑ&]{4}\d{6}[A-Z0-9]{3}$/.test(it.rfc || "")) return;
+    const a = estado.asegurados.find(x => x.cliente === it.cliente);
+    if (!a || a.rfc) return;
+    try { await db.doc(`actualizaciones/${it.id}-rfc`).set({ cliente: it.cliente, campo: "rfc", valor: it.rfc, archivo: it.nombre, por: estado.uid, hora: new Date().toISOString(), aplicada: false }); } catch (e) {}
+  }
+
+  // ---------- Decisiones de Lau ----------
+  async function asignar(id, cliente, como){
+    const it = estado.items.get(id); if (!it) return;
+    const caja = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+    if (caja) { const t = caja.querySelector("select[data-campo=tipo]"), f = caja.querySelector("input[data-campo=fecha]"); if (t) it.tipo = t.value; if (f) it.fecha_doc = f.value; }
+    it.cliente = cliente; it.etapa = "listo"; it.decidido_por = como || "Lau"; it.candidato_cliente = null;
+    if (cliente) { it.confianza = "Alta"; it.identificado_por = "confirmado por Lau"; }
+    await guardarEntrada(it); await aprender(it); pintar();
+    toast(cliente ? `Asignado a ${cliente}` : "Irá a _Por identificar");
+  }
+  async function clienteNuevo(id, nombre){
+    const it = estado.items.get(id); if (!it) return;
+    nombre = nombre.trim().toUpperCase();
+    if (nombre.length < 5) return toast("Escribe el nombre completo del asegurado");
+    it.candidato_cliente = nombre; it.cliente = null; it.etapa = "listo"; it.decidido_por = "Lau (cliente nuevo)";
+    if (db) { try { await db.doc("altas/" + normaliza(nombre).replace(/ /g, "_").slice(0, 150)).set({ nombre, rfc: it.rfc || "", correo: "", alias: "", archivo: it.nombre, por: estado.uid, hora: new Date().toISOString(), aplicada: false }); } catch (e) {} }
+    await guardarEntrada(it); pintar();
+    toast("Alta propuesta; el archivo irá a _Por identificar hasta que se apruebe");
+  }
+  async function descartar(id){
+    const it = estado.items.get(id); if (!it) return;
+    it.etapa = "descartado"; await guardarEntrada(it, { estado: "descartado" }); estado.items.delete(id); pintar(); toast("Descartado");
+  }
+  function reabrir(id){ const it = estado.items.get(id); if (!it) return; it.etapa = "pregunta"; it.cliente = null; pintar(); }
+
+  // ---------- Paquete para OneDrive ----------
+  const destinoDe = (it) => {
+    if (!it.cliente) return `_Por identificar / ${it.nombre}`;
+    const ext = (it.nombre.match(/\.[^.]+$/) || [""])[0].toLowerCase();
+    const f = (it.fecha_doc || it.hora.slice(0, 10)).replace(/-/g, "");
+    return `${estado.carteraDe.get(it.cliente) || "_Sin cartera"} / ${it.cliente} / evento abierto o nuevo / ${f}_${TIPO_CORTO[it.tipo] || "DOC"}_nn${ext}`;
+  };
+  async function enviar(){
+    const listos = [...estado.items.values()].filter(x => x.etapa === "listo");
+    if (!listos.length) return;
+    if (!downloads) return toast("Esta vista no puede guardar archivos; ábrela en Claude con tu cuenta");
+    if (!window.JSZip) return toast("No cargó el empaquetador; recarga la página");
+    const b = $("btnEnviar"); b.disabled = true; b.textContent = "Empaquetando…";
+    const ahora = new Date();
+    const lote = ahora.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+    try {
+      const zip = new JSZip();
+      const manifiesto = { formato: "arval-embudo", version: 1, lote, generado: ahora.toISOString(), por: estado.uid, archivos: [] };
+      listos.forEach((it, i) => {
+        const ruta = `archivos/${String(i + 1).padStart(3, "0")}_${it.nombre.replace(/[\\/:*?"<>|#%]+/g, " ")}`;
+        zip.file(ruta, it.file);
+        manifiesto.archivos.push({ id: it.id, archivo: ruta, nombre: it.nombre, cliente: it.cliente || null, cartera: it.cliente ? (estado.carteraDe.get(it.cliente) || "") : "",
+          tipo: it.tipo || "Otro", fecha_doc: it.fecha_doc || "", fecha_recepcion: it.hora.slice(0, 10), confianza: it.confianza || "", decidido_por: it.decidido_por || "",
+          candidato_cliente: it.candidato_cliente || null });
+      });
+      zip.file("manifiesto.json", JSON.stringify(manifiesto, null, 1));
+      const data = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+      await downloads.save({ filename: `ARVAL_EMBUDO_${lote}.zip`, data });
+      const hora_envio = new Date().toISOString();
+      for (const it of listos) { it.etapa = "enviado"; await guardarEntrada(it, { estado: "enviado", lote, hora_envio }); estado.items.delete(it.id); }
+      estado.enviadosSesion = (estado.enviadosSesion || 0) + listos.length;
+      toast(`Paquete guardado: ${listos.length} archivo(s). El agente los acomoda en OneDrive.`);
+    } catch (e) {
+      const c = e && e.code;
+      toast(c === "declined" ? "No se guardó el paquete; los archivos siguen aquí" : c === "rate_limited" ? "Hay otra descarga abierta; inténtalo en un momento" : "No se pudo generar el paquete");
+    } finally { b.disabled = false; b.textContent = "Guardar en OneDrive"; pintar(); }
+  }
+
+  // ---------- Pintar ----------
+  const pillConf = (c) => c ? `<span class="pill ${esc(normaliza(c).toLowerCase())}">${esc(c)}</span>` : "";
+  const ETAPA_TXT = { recibido: "en fila", leyendo: "leyendo", analizando: "analizando con Claude", error: "error" };
+
+  function opcionesTipo(sel){ return TIPOS.map(t => `<option ${t === sel ? "selected" : ""}>${esc(t)}</option>`).join(""); }
+
+  function tarjetaDuda(it){
+    const ops = (it.candidatos || []).slice(0, 4).map(c => `<button type="button" class="op" data-accion="asignar" data-cliente="${esc(c.cliente)}">
+      <span class="k">${esc(c.cliente)}</span><span class="s">${c.cliente === it.sugerido ? "sugerido" : ""}</span>
+      <span class="r">${esc(c.cartera || estado.carteraDe.get(c.cliente) || "")} · ${esc(c.razon)}</span></button>`).join("");
+    return `<div class="archivo duda" data-id="${esc(it.id)}">
+      <div class="q">¿De quién es <span style="overflow-wrap:anywhere">${esc(it.nombre)}</span>?</div>
+      <div class="m"><span>${esc(it.tipo || "")}</span>${it.fecha_doc ? `<span>${esc(it.fecha_doc)}</span>` : ""}<span>${esc(it.metodo || "")}</span>${it.nombre_leido ? `<span>leído: “${esc(it.nombre_leido)}”</span>` : ""}${pillConf(it.confianza)}</div>
+      <div class="m"><span>${esc(it.motivo || "")}</span></div>
+      ${it.aviso ? `<div class="m" style="color:var(--warn)"><span>${esc(it.aviso)}</span></div>` : ""}
+      ${ops ? `<div class="opciones">${ops}</div>` : `<div class="muted">No encontré a nadie de la base en este documento.</div>`}
+      <input type="search" data-campo="buscar" placeholder="Buscar otro: nombre, RFC, póliza o dependiente" aria-label="Buscar asegurado para ${esc(it.nombre)}" autocomplete="off">
+      <div class="opciones" data-campo="resultados"></div>
+      <div class="campos"><label>Tipo <select data-campo="tipo">${opcionesTipo(it.tipo)}</select></label><label>Fecha <input type="date" data-campo="fecha" value="${esc(it.fecha_doc || "")}"></label></div>
+      <details class="mas"><summary>Otras opciones</summary>
+        <div class="campos"><input type="text" data-campo="nuevo" placeholder="Nombre del asegurado nuevo" value="${esc(it.nombre_leido || "")}" aria-label="Nombre del asegurado nuevo" style="flex:1 1 220px">
+        <button class="btn sec min" type="button" data-accion="nuevo">Es un asegurado nuevo</button></div>
+        <div class="campos" style="margin-top:8px"><button class="btn sec min" type="button" data-accion="sinCliente">No sé: mandar a _Por identificar</button>
+        <button class="btn sec min" type="button" data-accion="descartar">No es de reembolso: descartar</button></div>
+      </details></div>`;
+  }
+  function tarjetaListo(it){
+    return `<div class="archivo" data-id="${esc(it.id)}">
+      <div class="fila"><span class="nom">${esc(it.nombre)}</span>${pillConf(it.cliente ? it.confianza : "")}</div>
+      <div class="m"><span><b style="color:var(--fg)">${esc(it.cliente || (it.candidato_cliente ? "Alta pendiente: " + it.candidato_cliente : "Sin asegurado"))}</b></span><span>${esc(it.tipo)}</span>${it.fecha_doc ? `<span>${esc(it.fecha_doc)}</span>` : ""}<span>${esc(it.decidido_por === "embudo" ? it.identificado_por : it.decidido_por)}</span></div>
+      <div class="ruta">${esc(destinoDe(it))}</div>
+      <div class="fila"><span class="muted" style="font-size:.84rem">${esc(it.aviso || "")}</span><button class="btn sec min" type="button" data-accion="reabrir">Cambiar</button></div></div>`;
+  }
+  function tarjetaCurso(it){
+    return `<div class="archivo" data-id="${esc(it.id)}">
+      <div class="fila"><span class="nom">${esc(it.nombre)}</span><span class="pill ${it.etapa === "error" ? "error" : "curso"}">${esc(ETAPA_TXT[it.etapa] || it.etapa)}</span></div>
+      ${it.etapa === "error" ? `<div class="m"><span>${esc(it.aviso)}</span></div>` : `<div class="barra"><span style="width:${Math.round((it.avance || 0) * 100)}%"></span></div>`}</div>`;
+  }
+
+  function pintar(){
+    const items = [...estado.items.values()];
+    const dudas = items.filter(x => x.etapa === "pregunta");
+    const listos = items.filter(x => x.etapa === "listo");
+    const curso = items.filter(x => ["recibido", "leyendo", "analizando", "error"].includes(x.etapa));
+    // Conservar lo que Lau está escribiendo en una tarjeta de duda al repintar
+    const borrador = new Map([...document.querySelectorAll("#dudas [data-id]")].map(c => [c.dataset.id, { q: c.querySelector("[data-campo=buscar]")?.value || "", t: c.querySelector("[data-campo=tipo]")?.value, f: c.querySelector("[data-campo=fecha]")?.value }]));
+    const dudasHtml = dudas.map(tarjetaDuda).join("");
+    if ($("dudas").dataset.firma !== dudas.map(d => d.id).join()) {
+      $("dudas").innerHTML = dudasHtml || `<div class="vacio">${items.length ? "Nada que preguntar por ahora." : "Cuando un documento no deja claro de qué asegurado es, aparece aquí con las opciones más probables para que elijas."}</div>`;
+      $("dudas").dataset.firma = dudas.map(d => d.id).join();
+      borrador.forEach((v, id) => { const c = document.querySelector(`#dudas [data-id="${CSS.escape(id)}"]`); if (!c) return; const b = c.querySelector("[data-campo=buscar]"); b.value = v.q; if (v.q) buscarEn(c); if (v.t) c.querySelector("[data-campo=tipo]").value = v.t; if (v.f != null) c.querySelector("[data-campo=fecha]").value = v.f; });
+    }
+    $("notaDudas").textContent = dudas.length ? `${dudas.length} por decidir` : "";
+    $("enCurso").innerHTML = curso.map(tarjetaCurso).join("");
+    $("listos").innerHTML = listos.length ? listos.map(tarjetaListo).join("") : `<div class="vacio">Los documentos clasificados esperan aquí. Con <b>Guardar en OneDrive</b> se descargan en un paquete y el agente de Arval los acomoda en <code>Arval / Cartera / Cliente / Evento</code>.</div>`;
+    $("envio").hidden = !listos.length; $("nListos").textContent = listos.length;
+    $("notaListos").textContent = listos.length ? `${listos.filter(x => !x.cliente).length || "ninguno"} sin asegurado` : "";
+    const n = { recibidos: items.length + (estado.enviadosSesion || 0), leyendo: items.filter(x => x.etapa === "leyendo" || x.etapa === "recibido").length,
+      analizando: items.filter(x => x.etapa === "analizando").length, pregunta: dudas.length, listos: listos.length, enviados: estado.enviadosSesion || 0 };
+    document.querySelectorAll("#riel .etapa").forEach(e => { const v = n[e.dataset.e]; e.querySelector(".n").textContent = v; e.classList.toggle("activa", v > 0 && e.dataset.e !== "recibidos" && e.dataset.e !== "enviados"); });
+  }
+
+  function buscarEn(caja){
+    const q = normaliza(caja.querySelector("[data-campo=buscar]").value);
+    const res = caja.querySelector("[data-campo=resultados]");
+    if (q.length < 3) { res.innerHTML = ""; return; }
+    const pal = q.split(" ");
+    const hits = estado.asegurados.filter(a => pal.every(w => a._txt.includes(w))).slice(0, 6);
+    res.innerHTML = hits.length ? hits.map(a => `<button type="button" class="op" data-accion="asignar" data-cliente="${esc(a.cliente)}"><span class="k">${esc(a.cliente)}</span><span class="s"></span>
+      <span class="r">${esc(a.cartera)}${a.rfc ? " · RFC " + esc(a.rfc) : ""}${(a.personas || []).length ? " · relacionados: " + esc(a.personas.slice(0, 3).join(", ")) : ""}</span></button>`).join("")
+      : `<div class="muted" style="font-size:.88rem">Sin coincidencias en la base.</div>`;
+  }
+
+  function pintarHistorial(){
+    const h = estado.historial.slice().sort((a, b) => String(b.actualizado || b.hora).localeCompare(String(a.actualizado || a.hora))).slice(0, 40);
+    const cont = $("historial");
+    if (!h.length) return;
+    cont.classList.remove("vacio");
+    const ESTADO = { enviado: "en OneDrive", clasificado: "clasificado", "por confirmar": "por confirmar", "por identificar": "por identificar", descartado: "descartado" };
+    cont.innerHTML = `<div class="tabla-scroll"><table class="t"><thead><tr><th>Archivo</th><th>Asegurado</th><th>Tipo</th><th>Decidió</th><th>Estado</th><th>Hora</th></tr></thead><tbody>${h.map(e => `<tr>
+      <td>${esc(e.nombre)}</td><td>${esc(e.cliente || (e.candidato_cliente ? "alta: " + e.candidato_cliente : "—"))}</td><td>${esc(e.tipo)}</td>
+      <td>${esc(e.decidido_por === "embudo" ? "automático · " + (e.identificado_por || "") : e.decidido_por || "")}</td><td>${esc(ESTADO[e.estado] || e.estado)}</td><td>${horaCorta(e.hora_envio || e.actualizado || e.hora)}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+
+  // ---------- Eventos ----------
+  document.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-accion]"); if (!b) return;
+    const caja = b.closest("[data-id]"); const id = caja && caja.dataset.id;
+    const a = b.dataset.accion;
+    if (a === "asignar") asignar(id, b.dataset.cliente);
+    else if (a === "nuevo") clienteNuevo(id, caja.querySelector("[data-campo=nuevo]").value);
+    else if (a === "sinCliente") asignar(id, null, "Lau (sin asegurado)");
+    else if (a === "descartar") descartar(id);
+    else if (a === "reabrir") reabrir(id);
+  });
+  document.addEventListener("input", (ev) => { if (ev.target.matches("[data-campo=buscar]")) buscarEn(ev.target.closest("[data-id]")); });
+  $("btnEnviar").addEventListener("click", enviar);
+  const boca = $("boca");
+  ["dragenter", "dragover"].forEach(t => boca.addEventListener(t, (e) => { e.preventDefault(); boca.classList.add("sobre"); }));
+  ["dragleave", "drop"].forEach(t => boca.addEventListener(t, (e) => { e.preventDefault(); boca.classList.remove("sobre"); }));
+  boca.addEventListener("drop", (e) => { if (e.dataTransfer && e.dataTransfer.files.length) soltar(e.dataTransfer.files); });
+  // Soltar en cualquier parte de la página también entra al embudo
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => { e.preventDefault(); if (!boca.contains(e.target) && e.dataTransfer && e.dataTransfer.files.length) soltar(e.dataTransfer.files); });
+  $("archivos").addEventListener("change", (e) => { soltar(e.target.files); e.target.value = ""; });
+  window.addEventListener("beforeunload", (e) => { if ([...estado.items.values()].some(x => x.etapa !== "enviado")) { e.preventDefault(); e.returnValue = ""; } });
+
+  // ---------- Inicio ----------
+  if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  async function iniciar(){
+    if (window.Tesseract) { chip("chOcr", "warn", "Lectura: cargando OCR…"); ocrWorker().catch(() => {}); } else chip("chOcr", "crit", "Lectura: OCR no cargó");
+    if (!window.claude || typeof window.claude.use !== "function") { $("avisoDb").hidden = false; pintarBase(); return; }
+    const [d, u, s, dl] = await Promise.all([claude.use("db"), claude.use("user"), claude.use("sample"), claude.use("downloads")]);
+    db = d; sample = s; downloads = dl;
+    chip("chIa", s ? "ok" : "warn", s ? "Claude: listo" : "Claude: no disponible, solo reglas locales");
+    if (!db) { $("avisoDb").hidden = false; pintarBase(); return; }
+    try { estado.uid = u ? await u.id() : null; } catch (e) { estado.uid = null; }
+    const err = (e) => { if (e && e.code === "revoked") $("avisoDb").hidden = false; };
+    db.doc("catalogo/lista").onSnapshot((x) => { estado.catalogo = x.exists ? (x.data().nombres || []) : []; pintarBase(); }, err);
+    db.doc("asegurados/lista").onSnapshot((x) => { prepararBase(x.exists ? x.data().asegurados : []); }, err);
+    db.collection("entradas").limit(300).onSnapshot((x) => { estado.historial = x.docs.map(d => ({ _id: d.id, ...d.data() })); pintarHistorial(); }, err);
+  }
+  pintar();
+  iniciar();
+})();
+</script>
