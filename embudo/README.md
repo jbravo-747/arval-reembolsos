@@ -21,3 +21,10 @@ Compilar (PyInstaller instalado en `D:\Arval\_herramientas\pyi`, porque C: está
 cd D:/Arval/arval-reembolsos/embudo
 PYTHONPATH=D:/Arval/_herramientas/pyi TMP=D:/Arval/_herramientas/tmp PYINSTALLER_CONFIG_DIR=D:/Arval/_herramientas/pyicfg python -m PyInstaller --noconfirm --onefile --windowed --name ArvalClasificador --paths .. --distpath dist --workpath build --specpath build --exclude-module pymupdf --exclude-module fitz --exclude-module markitdown --exclude-module winocr --exclude-module PIL --exclude-module openpyxl --exclude-module numpy --exclude-module requests agente.py
 ```
+
+## Manual
+
+`manual/manual.html`: artifact https://claude.ai/artifact/2HwMdE6hMMp6v8NzNZfPH2 (manual de uso con capturas, datos inventados).
+Las capturas no están en git: se regeneran con `python -I manual/generar_capturas.py` (Chrome sin ventana) y
+`python manual/capturar_programa.py` (ventana del .exe con Pillow; sin `-I` porque Pillow está en los paquetes de usuario).
+Al republicar: `files` con `img/*.png` y `root` en `embudo/manual`.

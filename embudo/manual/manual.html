@@ -1,0 +1,312 @@
+<title>Manual del Clasificador</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Open+Sans:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: columna de lectura (~68ch) con índice lateral en pantallas anchas; cada paso = número grande, texto y captura enmarcada.
+   Colores de Arval (azul marino #173A6D, rojo del logo #CC3333) y tipografías del sitio (Montserrat, Open Sans). */
+:root{
+  --bg:#f2f5f9; --surface:#ffffff; --surface-2:#e7edf5; --fg:#14223a; --muted:#58595b; --line:#d3dbe6;
+  --accent:#173a6d; --accent-soft:#dfe8f4; --marca:#cc3333; --marca-soft:#fbe4e4; --placa:#ffffff;
+  --ok:#2e7d4f; --ok-soft:#dbf0e3; --warn:#8a4b00; --warn-soft:#fbe9c7;
+  --display:"Montserrat",system-ui,sans-serif; --body:"Open Sans",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0c1524; --surface:#132036; --surface-2:#1a2b46; --fg:#e7edf6; --muted:#a3afc0; --line:#2a3c5a;
+  --accent:#8db2e6; --accent-soft:#1b3157; --marca:#e57373; --marca-soft:#3a1d22; --placa:#f4f6fa;
+  --ok:#6ccf93; --ok-soft:#153726; --warn:#f2b85a; --warn-soft:#3d2c0c; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0c1524; --surface:#132036; --surface-2:#1a2b46; --fg:#e7edf6; --muted:#a3afc0; --line:#2a3c5a;
+  --accent:#8db2e6; --accent-soft:#1b3157; --marca:#e57373; --marca-soft:#3a1d22; --placa:#f4f6fa;
+  --ok:#6ccf93; --ok-soft:#153726; --warn:#f2b85a; --warn-soft:#3d2c0c; color-scheme:dark }
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.6}
+a{color:var(--accent)}
+.pagina{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px;display:grid;grid-template-columns:220px minmax(0,1fr);gap:40px}
+@media (max-width:900px){.pagina{grid-template-columns:1fr;gap:20px}}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;color:var(--fg)}
+h1{font-size:clamp(1.8rem,4vw,2.6rem);font-weight:800;line-height:1.15;color:var(--accent)}
+h2{font-size:1.45rem;font-weight:800}
+h3{font-size:1.05rem;font-weight:700}
+p{margin:0}
+.muted{color:var(--muted)}
+code{font-family:var(--mono);font-size:.86em;background:var(--surface-2);padding:1px 6px;border-radius:4px}
+
+/* Índice */
+nav.indice{position:sticky;top:calc(16px + env(safe-area-inset-top,0px));align-self:start;font-size:.9rem;display:flex;flex-direction:column;gap:4px}
+nav.indice .tit{font-family:var(--display);font-weight:700;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
+nav.indice a{text-decoration:none;color:var(--fg);padding:4px 10px;border-left:2px solid var(--line)}
+nav.indice a:hover{border-left-color:var(--marca);color:var(--accent)}
+@media (max-width:900px){nav.indice{position:static;flex-direction:row;flex-wrap:wrap;gap:6px}nav.indice .tit{width:100%}nav.indice a{border:1px solid var(--line);border-radius:999px;padding:3px 10px}}
+
+main{display:flex;flex-direction:column;gap:48px;min-width:0}
+.portada{display:flex;flex-direction:column;gap:14px;padding-bottom:24px;border-bottom:3px solid var(--marca)}
+.portada .marca{display:flex;align-items:center;gap:14px}
+.portada img{width:64px;height:auto;background:var(--placa);border-radius:10px;padding:6px}
+.portada .eti{font-family:var(--display);font-weight:700;font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:var(--marca)}
+.portada .bajada{font-size:1.1rem;max-width:62ch}
+.enlaces{display:flex;flex-wrap:wrap;gap:10px}
+.enlaces a{display:inline-flex;align-items:center;gap:6px;font-weight:600;text-decoration:none;padding:7px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#fff}
+.enlaces a.sec{background:transparent;color:var(--accent)}
+:root[data-theme="dark"] .enlaces a:not(.sec){color:#0a1730}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .enlaces a:not(.sec){color:#0a1730} }
+
+/* Flujo */
+.flujo{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;counter-reset:f}
+@media (max-width:700px){.flujo{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.flujo div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;position:relative}
+.flujo div::before{counter-increment:f;content:counter(f);font-family:var(--display);font-weight:800;color:var(--marca);font-size:1.4rem;display:block;line-height:1}
+.flujo b{display:block;font-family:var(--display);margin:6px 0 2px}
+.flujo span{font-size:.88rem;color:var(--muted)}
+
+section.paso{display:flex;flex-direction:column;gap:14px;scroll-margin-top:16px}
+.cab{display:flex;align-items:baseline;gap:14px}
+.num{font-family:var(--display);font-weight:800;font-size:2.4rem;line-height:1;color:var(--marca);min-width:1.4em}
+.cuerpo{display:flex;flex-direction:column;gap:12px;max-width:70ch}
+ol.lista,ul.lista{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px}
+figure{margin:0;display:flex;flex-direction:column;gap:6px}
+figure img{display:block;width:100%;max-width:100%;height:auto;border:1px solid var(--line);border-radius:10px;background:#f2f5f9;box-shadow:0 1px 0 var(--line)}
+figure.angosta img{max-width:560px}
+figure figcaption{font-size:.85rem;color:var(--muted)}
+.dos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+@media (max-width:760px){.dos{grid-template-columns:1fr}}
+.nota{padding:12px 14px;border-radius:10px;background:var(--accent-soft);font-size:.95rem}
+.nota.ojo{background:var(--warn-soft)}
+.nota.regla{background:var(--marca-soft)}
+.nota b:first-child{font-family:var(--display)}
+.tabla-scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th{text-align:left;font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:6px 10px;border-bottom:1px solid var(--line)}
+td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+td code{white-space:nowrap}
+.chipi{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;font-weight:600;padding:2px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);white-space:nowrap}
+.chipi::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.chipi.no::before{background:var(--marca)}
+
+/* Árbol de carpetas */
+.arbol{font-family:var(--mono);font-size:.84rem;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;line-height:1.75;white-space:pre}
+.arbol .c{color:var(--accent);font-weight:600}
+.arbol .f{color:var(--fg)}
+.arbol .x{color:var(--muted)}
+details.faq{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+details.faq summary{cursor:pointer;font-weight:600}
+details.faq[open] summary{margin-bottom:8px}
+.faqs{display:flex;flex-direction:column;gap:8px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padding-top:16px}
+</style>
+
+<div class="pagina">
+  <nav class="indice" aria-label="Contenido">
+    <span class="tit">Contenido</span>
+    <a href="#como">Cómo funciona</a>
+    <a href="#antes">Antes de empezar</a>
+    <a href="#abrir">1 · Abrir</a>
+    <a href="#soltar">2 · Soltar</a>
+    <a href="#leer">3 · Leer</a>
+    <a href="#preguntar">4 · Te pregunto</a>
+    <a href="#revisar">5 · Revisar</a>
+    <a href="#guardar">6 · Guardar</a>
+    <a href="#donde">Dónde queda cada archivo</a>
+    <a href="#historial">Historial</a>
+    <a href="#problemas">Si algo sale mal</a>
+    <a href="#cuidados">Cuidados</a>
+  </nav>
+
+  <main>
+    <header class="portada">
+      <div class="marca"><img src="img/logo.png" alt="Arval" width="64" height="62"><span class="eti">Manual de uso · Arval</span></div>
+      <h1>Clasificador de archivos</h1>
+      <p class="bajada">Cómo meter a los expedientes los documentos que llegan fuera del correo (WhatsApp, escáner, una USB): se sueltan en el clasificador, se leen solos y quedan guardados en la carpeta <b>Arval</b> de OneDrive, en el expediente de su asegurado.</p>
+      <div class="enlaces">
+        <a href="https://claude.ai/artifact/EbazgykKVh3npeP7gyHuT3" target="_blank" rel="noopener">Abrir el clasificador</a>
+        <a class="sec" href="https://claude.ai/artifact/MWqDtpw1z7ZFojfwmtmsRs" target="_blank" rel="noopener">Panel de reembolsos</a>
+      </div>
+      <p class="muted" style="font-size:.88rem">Las imágenes usan asegurados y archivos inventados («JUAN EJEMPLO LÓPEZ»). En tu pantalla verás los reales.</p>
+    </header>
+
+    <section class="paso" id="como">
+      <h2>Cómo funciona</h2>
+      <div class="flujo">
+        <div><b>Sueltas</b><span>los archivos en la página del clasificador</span></div>
+        <div><b>Se leen</b><span>en tu computadora (texto y fotos) y Claude propone asegurado, tipo y fecha</span></div>
+        <div><b>Confirmas</b><span>solo cuando hay duda de a quién pertenece</span></div>
+        <div><b>Se guardan</b><span>en Arval › Cartera › Cliente › Evento, con nombre estándar</span></div>
+      </div>
+      <div class="nota regla"><b>Regla de oro:</b> todo documento del asegurado va a su expediente, sea o no de reembolso. Una póliza, un endoso o una identificación también se guardan; un expediente puede existir sin reembolso todavía.</div>
+    </section>
+
+    <section class="paso" id="antes">
+      <div class="cab"><span class="num" aria-hidden="true">0</span><h2>Antes de empezar (una sola vez por computadora)</h2></div>
+      <div class="cuerpo">
+        <p>El clasificador es una página web; quien guarda en OneDrive es un programa pequeño, <b>ArvalClasificador</b>, que vive en tu computadora. Se configura una vez:</p>
+        <ol class="lista">
+          <li><b>OneDrive con tu cuenta de Arval.</b> Clic en la nube azul junto al reloj → engrane → Configuración → Cuenta: debe decir tu correo <code>@arval.com.mx</code>.</li>
+          <li><b>La carpeta Arval en tu Explorador.</b> En OneDrive web: Compartido → <b>Arval</b> → «Agregar acceso directo a Mis archivos». Aparece en <code>OneDrive - ERNESTO ANTONIO ARVIZU VARELA › Arval</code> (el nombre es el de la organización en Microsoft).</li>
+          <li><b>Abre <code>ArvalClasificador</code></b> desde esa carpeta Arval (doble clic). Si Windows avisa «Windows protegió su PC»: Más información → Ejecutar de todas formas.</li>
+          <li>Pulsa <b>Guardar e iniciar</b>. La lista de comprobación debe quedar toda en verde.</li>
+        </ol>
+      </div>
+      <figure class="angosta"><img src="img/programa_listo.png" alt="Ventana de ArvalClasificador con las siete comprobaciones en verde y el mensaje Listo" width="820" height="960" loading="lazy"><figcaption>Así se ve cuando todo está listo: siete palomitas verdes y el mensaje «Listo». Las carpetas de descargas de cada navegador se detectan solas; no escribas nada en ese cuadro.</figcaption></figure>
+      <div class="nota">Desde ese momento el programa arranca solo cada vez que prendes la computadora. Ya no hay que abrirlo, salvo para revisar que siga en verde. Su botón <b>Ver instrucciones</b> trae este mismo paso a paso.</div>
+    </section>
+
+    <section class="paso" id="abrir">
+      <div class="cab"><span class="num" aria-hidden="true">1</span><h2>Abre el clasificador</h2></div>
+      <div class="cuerpo">
+        <p>Usa el acceso directo <b>«Clasificador de archivos»</b> de tu escritorio (o el botón «Abrir el clasificador» de arriba). Se abre en el navegador con tu cuenta de Claude. Revisa los tres indicadores de arriba:</p>
+      </div>
+      <figure><img src="img/inicio.png" alt="Pantalla inicial del clasificador con tres indicadores en verde y la zona para soltar archivos" width="2360" height="940" loading="lazy"><figcaption>Los tres indicadores en verde: el clasificador puede leer, consultar a Claude y conoce a los asegurados.</figcaption></figure>
+      <div class="tabla-scroll"><table>
+        <thead><tr><th>Indicador</th><th>Qué significa</th><th>Si no está en verde</th></tr></thead>
+        <tbody>
+          <tr><td><span class="chipi">Lectura</span></td><td>Puede leer PDF escaneados y fotos en tu computadora.</td><td>Recarga la página. Si sigue igual, los documentos te los preguntará todos; avisa a Joel.</td></tr>
+          <tr><td><span class="chipi">Claude</span></td><td>Puede pedirle a Claude que identifique tipo, fecha y asegurado.</td><td>La primera vez pide permiso: acéptalo. Sin Claude funciona, pero pregunta más.</td></tr>
+          <tr><td><span class="chipi">Asegurados</span></td><td>Tiene la base de asegurados para reconocer nombres, RFC y pólizas.</td><td>Abre la página desde tu cuenta de Arval; si persiste, avisa a Joel.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="paso" id="soltar">
+      <div class="cab"><span class="num" aria-hidden="true">2</span><h2>Suelta los archivos</h2></div>
+      <div class="cuerpo">
+        <p>Arrastra los archivos desde tu Explorador, WhatsApp Web o el correo y suéltalos sobre la zona punteada (o en cualquier parte de la página). También puedes hacer clic en la zona y elegirlos.</p>
+        <ul class="lista">
+          <li>Acepta <b>PDF, fotos (JPG, PNG) y XML</b> de facturas. Varios a la vez.</li>
+          <li>Cada archivo puede pesar hasta 25 MB.</li>
+          <li>Si sueltas un archivo que ya está en la lista, te avisa y no lo repite.</li>
+        </ul>
+      </div>
+      <figure><img src="img/soltar.png" alt="La zona para soltar se resalta al arrastrar archivos encima" width="2360" height="760" loading="lazy"><figcaption>Al arrastrar archivos encima, la zona se resalta: ya puedes soltar.</figcaption></figure>
+    </section>
+
+    <section class="paso" id="leer">
+      <div class="cab"><span class="num" aria-hidden="true">3</span><h2>Espera a que se lean</h2></div>
+      <div class="cuerpo">
+        <p>Cada archivo pasa por las etapas de la franja de contadores. Los PDF con texto tardan segundos; las fotos y los escaneos, un poco más.</p>
+      </div>
+      <figure><img src="img/riel.png" alt="Contadores: recibidos, leyendo, analizando, te pregunto, listos y en OneDrive" width="2360" height="240" loading="lazy"><figcaption>Rojo = te está preguntando algo; verde = listos para guardar.</figcaption></figure>
+      <figure class="angosta"><img src="img/leyendo.png" alt="Archivos en proceso: leyendo, analizando con Claude y en fila" width="1280" height="660" loading="lazy"><figcaption>Mientras se procesan, cada archivo muestra su etapa y una barra de avance.</figcaption></figure>
+    </section>
+
+    <section class="paso" id="preguntar">
+      <div class="cab"><span class="num" aria-hidden="true">4</span><h2>Responde «Te pregunto»</h2></div>
+      <div class="cuerpo">
+        <p>Si el documento no deja claro de qué asegurado es, aparece una tarjeta con una pregunta. Arriba ves lo que se leyó (tipo, fecha, nombre leído) y la razón de la duda.</p>
+        <ol class="lista">
+          <li><b>Revisa Tipo y Fecha</b> y corrígelos si hace falta, <i>antes</i> de elegir al asegurado.</li>
+          <li><b>Haz clic en el asegurado correcto.</b> El marcado como «sugerido» es la mejor opción encontrada; debajo de cada nombre dice por qué aparece (nombre, RFC, póliza o un dependiente).</li>
+          <li>Si no está en la lista, <b>búscalo</b> por nombre, RFC, póliza o dependiente en el cuadro «Buscar otro».</li>
+        </ol>
+      </div>
+      <div class="dos">
+        <figure><img src="img/pregunta.png" alt="Tarjeta de pregunta con dos asegurados posibles, buscador, tipo y fecha" width="1280" height="1120" loading="lazy"><figcaption>Un clic en el asegurado correcto y el documento pasa a «Listos».</figcaption></figure>
+        <figure><img src="img/opciones.png" alt="Otras opciones: asegurado nuevo, mandar a Por identificar o descartar" width="1280" height="1360" loading="lazy"><figcaption>«Otras opciones» para los casos especiales.</figcaption></figure>
+      </div>
+      <div class="tabla-scroll"><table>
+        <thead><tr><th>Otras opciones</th><th>Cuándo usarla</th></tr></thead>
+        <tbody>
+          <tr><td><b>Es un asegurado nuevo</b></td><td>La persona no está en la base. Escribe su nombre completo: queda como alta propuesta para el panel y el archivo va a <code>_Por identificar</code> mientras se aprueba.</td></tr>
+          <tr><td><b>No sé: mandar a _Por identificar</b></td><td>No sabes de quién es. Se guarda en OneDrive sin asegurado para resolverlo después; no se pierde.</td></tr>
+          <tr><td><b>No es un documento: descartar</b></td><td>Solo para lo que no es un documento: una firma, un logo, una imagen repetida. <b>Nunca</b> para pólizas u otros documentos que no sean de reembolso: esos van a su expediente.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="paso" id="revisar">
+      <div class="cab"><span class="num" aria-hidden="true">5</span><h2>Revisa «Listos para OneDrive»</h2></div>
+      <div class="cuerpo">
+        <p>Lo que el clasificador identificó con seguridad (por ejemplo, el RFC de una factura) llega aquí directo, sin preguntar. Cada tarjeta dice asegurado, tipo, fecha, cómo se identificó y <b>la ruta donde se va a guardar</b>.</p>
+        <ul class="lista">
+          <li>La etiqueta <b>ALTA</b> indica que la identificación es segura.</li>
+          <li>«evento abierto o nuevo» lo decide el programa al guardar: si el asegurado tiene un evento con documentos de hace 10 días o menos, entra ahí; si no, abre uno nuevo.</li>
+          <li>Si algo no está bien, pulsa <b>Cambiar</b>: la tarjeta regresa a «Te pregunto».</li>
+        </ul>
+      </div>
+      <figure class="angosta"><img src="img/listos.png" alt="Lista de documentos listos con su asegurado, tipo, fecha y ruta de destino" width="1280" height="1520" loading="lazy"><figcaption>Tres documentos listos: una factura y una póliza del mismo asegurado, y una foto sin asegurado que irá a _Por identificar.</figcaption></figure>
+    </section>
+
+    <section class="paso" id="guardar">
+      <div class="cab"><span class="num" aria-hidden="true">6</span><h2>Pulsa «Guardar en OneDrive»</h2></div>
+      <div class="cuerpo">
+        <ol class="lista">
+          <li>Pulsa <b>Guardar en OneDrive</b> (arriba de la lista de listos).</li>
+          <li>Aparece un aviso para guardar el archivo <code>ARVAL_EMBUDO_….zip</code>: <b>acéptalo</b>.</li>
+          <li>En unos segundos el programa lo toma de tu carpeta de descargas, acomoda cada archivo en Arval y lo quita de descargas. OneDrive lo sube a la nube.</li>
+          <li>Los contadores pasan a «En OneDrive» y el historial marca «en OneDrive».</li>
+        </ol>
+        <div class="nota ojo"><b>No cierres la página</b> con documentos en «Te pregunto» o «Listos» sin guardarlos: los archivos solo están en la página hasta que pulsas Guardar. Si la cierras, el navegador te avisa; si ya la cerraste, vuelve a soltarlos.</div>
+      </div>
+    </section>
+
+    <section class="paso" id="donde">
+      <h2>Dónde queda cada archivo</h2>
+      <div class="cuerpo">
+        <p>Todo queda en la carpeta compartida <b>Arval</b> (OneDrive de soluciones@), con esta estructura y nombres estándar:</p>
+      </div>
+<div class="arbol" role="img" aria-label="Árbol de carpetas de Arval con carteras, clientes, eventos y archivos"><span class="c">Arval</span>
+├── <span class="c">ARVAL CLIENTES</span>                       <span class="x">← cartera</span>
+│   └── <span class="c">JUAN EJEMPLO LÓPEZ</span>               <span class="x">← asegurado</span>
+│       └── <span class="c">2026-11_Expediente 20261105</span>  <span class="x">← evento (mes y fecha en que llegó)</span>
+│           ├── <span class="f">20261102_CFDI_01.xml</span>      <span class="x">← fecha del documento + tipo + número</span>
+│           └── <span class="f">20261028_SEGURO_01.pdf</span>
+├── <span class="c">SAYER CLIENTES</span>
+├── <span class="c">_Por identificar</span>                     <span class="x">← lo que se mandó sin asegurado</span>
+│   └── <span class="f">foto_borrosa.jpg</span>
+├── <span class="c">_Embudo</span>                              <span class="x">← registro del programa (no tocar)</span>
+└── <span class="c">_DESTINO_OFICIAL_ARVAL</span>               <span class="x">← marca de la carpeta correcta (no borrar)</span></div>
+      <div class="tabla-scroll"><table>
+        <thead><tr><th>Tipo de documento</th><th>Código en el nombre</th></tr></thead>
+        <tbody>
+          <tr><td>CFDI factura (XML)</td><td><code>CFDI</code></td></tr>
+          <tr><td>CFDI recibo de honorarios</td><td><code>CFDI-HON</code></td></tr>
+          <tr><td>Factura PDF</td><td><code>FACTURA</code></td></tr>
+          <tr><td>Receta</td><td><code>RECETA</code></td></tr>
+          <tr><td>Informe médico</td><td><code>INFORME</code></td></tr>
+          <tr><td>Estudio o resultado</td><td><code>ESTUDIO</code></td></tr>
+          <tr><td>Identificación</td><td><code>ID</code></td></tr>
+          <tr><td>Formato de reclamación</td><td><code>RECLAMACION</code></td></tr>
+          <tr><td>Comprobante de pago</td><td><code>PAGO</code></td></tr>
+          <tr><td>Finiquito o dictamen</td><td><code>FINIQUITO</code></td></tr>
+          <tr><td>Operación de seguro (pólizas, endosos, renovaciones)</td><td><code>SEGURO</code></td></tr>
+          <tr><td>Otro</td><td><code>DOC</code></td></tr>
+        </tbody>
+      </table></div>
+      <div class="nota">Nunca se sobrescribe nada: si ya existe <code>20261102_CFDI_01.xml</code>, el siguiente queda como <code>_02</code>.</div>
+    </section>
+
+    <section class="paso" id="historial">
+      <h2>Historial</h2>
+      <div class="cuerpo"><p>Al final de la página queda el registro de todo lo clasificado, por cualquier persona: asegurado, tipo, quién lo decidió (el clasificador solo o tú) y si ya está en OneDrive. Sirve para saber si un documento ya se había guardado.</p></div>
+      <figure><img src="img/historial.png" alt="Tabla del historial con archivo, asegurado, tipo, quién decidió, estado y hora" width="2360" height="520" loading="lazy"><figcaption>«por confirmar» = quedó una pregunta sin responder: vuelve a soltar ese archivo.</figcaption></figure>
+    </section>
+
+    <section class="paso" id="problemas">
+      <h2>Si algo sale mal</h2>
+      <div class="faqs">
+        <details class="faq"><summary>Pulsé «Guardar en OneDrive» y los archivos no aparecen en Arval</summary>
+          <p>Abre <b>ArvalClasificador</b> desde la carpeta Arval y revisa la lista de comprobación: todo debe estar en verde. Pulsa <b>Ver registro</b> para ver qué hizo con el último paquete. Si «Vigilando Descargas ahora» dice Detenido, pulsa Guardar e iniciar. Los paquetes no se pierden: esperan en tu carpeta de descargas hasta que el programa los toma.</p></details>
+        <details class="faq"><summary>El programa dice que no es la carpeta Arval de soluciones@</summary>
+          <p>Falta la marca <code>_DESTINO_OFICIAL_ARVAL</code> en la carpeta elegida: o es otra carpeta llamada Arval, o OneDrive no ha terminado de sincronizar. Pulsa «Ver Arval en la web» para comparar, espera a que la nube azul diga que todo está al día y vuelve a revisar.</p></details>
+        <details class="faq"><summary>Me preguntó por un documento que tenía el nombre claro</summary>
+          <p>Pasa con fotos borrosas, escaneos chuecos o nombres incompletos. Elige al asegurado tú; queda registrado que lo decidiste tú.</p></details>
+        <details class="faq"><summary>El asegurado no aparece ni buscándolo</summary>
+          <p>Usa «Otras opciones → Es un asegurado nuevo» con su nombre completo. El archivo se guarda en <code>_Por identificar</code> y el alta queda pendiente de aprobar en el Panel de reembolsos.</p></details>
+        <details class="faq"><summary>Me equivoqué de asegurado y ya lo guardé</summary>
+          <p>No lo borres. Mueve el archivo a la carpeta correcta en Arval y avisa a Joel para que el registro quede bien.</p></details>
+        <details class="faq"><summary>Cerré la página antes de guardar</summary>
+          <p>Los archivos que no se guardaron no llegaron a OneDrive. Vuelve a soltarlos; el clasificador reconoce los que ya se habían mandado.</p></details>
+      </div>
+    </section>
+
+    <section class="paso" id="cuidados">
+      <h2>Cuidados con la información</h2>
+      <ul class="lista">
+        <li>Son documentos médicos: guárdalos solo en Arval, no en tu escritorio ni en otras carpetas.</li>
+        <li>El clasificador <b>no guarda documentos</b>: solo el nombre del archivo, el asegurado y el tipo. El documento vive solo en OneDrive.</li>
+        <li>No compartas la carpeta Arval con vínculos de «Cualquier persona».</li>
+        <li>No borres <code>_DESTINO_OFICIAL_ARVAL</code> ni <code>_Embudo</code>.</li>
+      </ul>
+    </section>
+
+    <footer>Manual del Clasificador de archivos · Arval · noviembre 2026. Dudas: Joel.</footer>
+  </main>
+</div>
