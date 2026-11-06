@@ -286,6 +286,120 @@ def vigilar(una_vez=False):
         time.sleep(INTERVALO)
 
 
+# ---------------- Comprobaciones e instrucciones ----------------
+INSTRUCCIONES = """PASOS PARA CONFIGURAR EL CLASIFICADOR EN ESTA COMPUTADORA
+
+ANTES (lo hace Joel con la cuenta soluciones@)
+  • En OneDrive web: Arval → Administrar acceso. Laura Torres debe tener «Puede editar».
+  • En la pestaña Vínculos, el enlace no debe ser «Cualquier persona con el vínculo».
+
+1. ONEDRIVE CON LA CUENTA DE TRABAJO
+  • Clic en la nube azul junto al reloj → engrane → Configuración → Cuenta.
+    Debe decir ltorres@arval.com.mx.
+  • Si la nube es gris, no aparece o pide iniciar sesión: menú Inicio → escribe OneDrive →
+    ábrelo e inicia sesión con el correo de Arval.
+
+2. LA CARPETA ARVAL EN ESTA COMPUTADORA
+  • Pulsa «Ver Arval en la web» (con la cuenta de Arval). Si no abre: OneDrive web → Compartido → Arval.
+  • Selecciona la carpeta Arval y pulsa «Agregar acceso directo a Mis archivos»
+    (si no se ve, está en los tres puntos «…»).
+  • En uno o dos minutos aparece en el Explorador: OneDrive - Arval › Arval,
+    con la carpeta _DESTINO_OFICIAL_ARVAL dentro.
+  • Si no aparece «Agregar acceso directo», falta el permiso de edición (ver ANTES).
+
+3. SINCRONIZACIÓN AL DÍA
+  • Clic en la nube azul: debe decir que los archivos están actualizados, sin pausa ni errores.
+  • No hace falta «Mantener siempre en este dispositivo».
+
+4. CONFIGURAR ESTE PROGRAMA
+  • «Carpeta compartida Arval» debe ser OneDrive - Arval\\Arval. La lista de comprobación lo confirma.
+  • «Carpeta de Descargas» debe ser donde guarda los archivos el navegador.
+  • Deja marcadas las casillas y pulsa «Guardar e iniciar». Todo debe quedar en verde.
+
+5. PRUEBA
+  • Abre el Clasificador (acceso directo en el escritorio), suelta un documento, confirma el asegurado
+    y pulsa «Guardar en OneDrive». Acepta la descarga.
+  • En segundos el archivo aparece en Arval › Cartera › Cliente › Evento.
+    Si no aparece, pulsa «Ver registro» en esta ventana.
+  • Avisa a Joel: él confirma desde su lado que apareció la carpeta _Embudo en Arval.
+
+Si al abrir el programa Windows avisa «Windows protegió su PC»: Más información → Ejecutar de todas formas.
+"""
+
+
+def cuenta_trabajo():
+    """(correo, carpeta) de la cuenta de OneDrive de trabajo conectada en esta PC, o (None, None)."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\OneDrive\Accounts") as k:
+            i = 0
+            while True:
+                try:
+                    nombre = winreg.EnumKey(k, i)
+                except OSError:
+                    break
+                i += 1
+                if not nombre.lower().startswith("business"):
+                    continue
+                try:
+                    with winreg.OpenKey(k, nombre) as c:
+                        correo = winreg.QueryValueEx(c, "UserEmail")[0]
+                        carpeta = winreg.QueryValueEx(c, "UserFolder")[0]
+                    if correo:
+                        return correo, carpeta
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return None, None
+
+
+def vigilante_activo():
+    h = ctypes.windll.kernel32.OpenMutexW(0x00100000, False, f"Local\\{APP}Vigilante")   # SYNCHRONIZE
+    if h:
+        ctypes.windll.kernel32.CloseHandle(h)
+    return bool(h)
+
+
+def arranque_registrado():
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CLAVE_RUN) as k:
+            winreg.QueryValueEx(k, APP)
+        return True
+    except OSError:
+        return False
+
+
+def puede_escribir(carpeta):
+    prueba = Path(carpeta) / ".arval_prueba_escritura"
+    try:
+        prueba.write_text("ok", encoding="utf-8"); prueba.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def comprobaciones(arval, descargas):
+    """[(ok, título, detalle)] de todo lo que necesita el clasificador en esta PC; ok=None si aún no aplica."""
+    correo, carpeta = cuenta_trabajo()
+    a = Path(arval) if arval else None
+    hay_arval = bool(a) and a.is_dir()
+    oficial = hay_arval and destino.es_oficial(a)
+    cfg = leer_config()
+    return [
+        (bool(correo) and correo.lower().endswith("@arval.com.mx"), "OneDrive con la cuenta de trabajo",
+         f"{correo} · {carpeta}" if correo else "No hay una cuenta de trabajo de OneDrive conectada (paso 1)"),
+        (hay_arval, "Carpeta Arval en esta computadora", str(a) if hay_arval else "No encontré la carpeta Arval sincronizada (paso 2)"),
+        (oficial, "Es la Arval de soluciones@", f"Trae {destino.MARCA}" if oficial else f"Falta {destino.MARCA}: no es la correcta o no termina de sincronizar (pasos 2 y 3)"),
+        (oficial and puede_escribir(a), "Permiso para guardar en Arval", "Se pudo escribir" if oficial and puede_escribir(a) else "No se puede escribir (permiso «Puede editar» o sincronización en pausa)"),
+        (bool(descargas) and Path(descargas).is_dir(), "Carpeta de Descargas", str(descargas)),
+        ((bool(cfg) and arranque_registrado()) if cfg else None, "Configurado y arranca con Windows",
+         f"Configurado el {cfg['configurado'][:16].replace('T', ' ')}" if cfg else "Aún no: pulsa «Guardar e iniciar» (paso 4)"),
+        (vigilante_activo() if cfg else None, "Vigilando Descargas ahora", "Activo" if vigilante_activo() else "Detenido" if cfg else "Se activa al guardar"),
+    ]
+
+
 # ---------------- Ventana de configuración ----------------
 def ventana():
     import tkinter as tk
@@ -295,11 +409,14 @@ def ventana():
     previo = cfg or leer_config(CASA.parent / APP_ANTERIOR / "config.json")   # carpetas elegidas en la primera versión
     raiz = tk.Tk()
     raiz.title("Arval · Clasificador de archivos")
-    raiz.geometry("640x470"); raiz.minsize(560, 440)
+    raiz.geometry("720x760"); raiz.minsize(620, 680)
     marco = ttk.Frame(raiz, padding=18); marco.pack(fill="both", expand=True)
-    ttk.Label(marco, text="Configurar el clasificador en esta computadora", font=("Segoe UI", 14, "bold")).pack(anchor="w")
-    ttk.Label(marco, wraplength=590, text="Los paquetes que descargas desde el Clasificador de archivos se acomodan solos en la carpeta "
-              "compartida Arval de OneDrive (Cartera / Cliente / Evento). Revisa las dos carpetas y pulsa Guardar e iniciar.").pack(anchor="w", pady=(4, 12))
+    cab = ttk.Frame(marco); cab.pack(fill="x")
+    ttk.Label(cab, text="Configurar el clasificador en esta computadora", font=("Segoe UI", 14, "bold")).pack(side="left")
+    ttk.Button(cab, text="Ver instrucciones", command=lambda: ver_instrucciones(raiz)).pack(side="right")
+    ttk.Label(marco, wraplength=670, text="Los paquetes que descargas desde el Clasificador de archivos se acomodan solos en la carpeta "
+              "compartida Arval de OneDrive (Cartera / Cliente / Evento). Revisa las dos carpetas y pulsa Guardar e iniciar. "
+              "Si algo sale en rojo, «Ver instrucciones» explica cómo arreglarlo.").pack(anchor="w", pady=(4, 12))
 
     candidatas = [str(p) for p in candidatas_arval()]
     v_arval = tk.StringVar(value=previo.get("arval") or (candidatas[0] if candidatas else ""))
@@ -325,8 +442,22 @@ def ventana():
     fila("Carpeta de Descargas del navegador", v_desc)
     ttk.Checkbutton(marco, text="Iniciar con Windows", variable=v_auto).pack(anchor="w")
     ttk.Checkbutton(marco, text="Accesos directos al clasificador y al panel en el escritorio", variable=v_acc).pack(anchor="w", pady=(0, 10))
-    estado = ttk.Label(marco, wraplength=590, text=f"Estado: {'configurado el ' + cfg['configurado'][:16].replace('T', ' ') if cfg else 'sin configurar'}")
+    estado = ttk.Label(marco, wraplength=670, text=f"Estado: {'configurado el ' + cfg['configurado'][:16].replace('T', ' ') if cfg else 'sin configurar'}")
     estado.pack(anchor="w", pady=(0, 10))
+
+    # Lista de comprobación: lo que necesita esta PC, en verde o rojo
+    ttk.Label(marco, text="Lista de comprobación", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+    lista = tk.Frame(marco); lista.pack(fill="x", pady=(4, 10))
+
+    def refrescar():
+        for w in lista.winfo_children():
+            w.destroy()
+        for i, (ok, titulo, detalle) in enumerate(comprobaciones(v_arval.get().strip(), v_desc.get().strip())):
+            color, signo = ("#2e7d4f", "✔") if ok else ("#58595b", "•") if ok is None else ("#b3261e", "✖")
+            tk.Label(lista, text=signo, fg=color, font=("Segoe UI", 11, "bold")).grid(row=i, column=0, sticky="nw", padx=(0, 6))
+            tk.Label(lista, text=titulo, font=("Segoe UI", 9, "bold"), anchor="w").grid(row=i, column=1, sticky="w")
+            tk.Label(lista, text=detalle, fg="#58595b", font=("Segoe UI", 9), anchor="w", wraplength=440, justify="left").grid(row=i, column=2, sticky="w", padx=(8, 0))
+    ttk.Button(marco, text="Volver a revisar", command=refrescar).pack(anchor="w", pady=(0, 12))
 
     def guardar():
         a, d = Path(v_arval.get().strip()), Path(v_desc.get().strip())
@@ -344,13 +475,37 @@ def ventana():
             estado.config(text=f"No pude escribir en la carpeta: {e}", foreground="#b3261e"); return
         estado.config(foreground="#2e7d4f", text=f"Listo. El agente vigila {d} y guarda en {a}. Ya puedes cerrar esta ventana; "
                       "seguirá trabajando en segundo plano y arrancará solo al encender la computadora.")
+        raiz.after(2500, refrescar)   # el vigilante tarda un momento en arrancar
 
     botones = ttk.Frame(marco); botones.pack(fill="x")
     ttk.Button(botones, text="Guardar e iniciar", command=guardar).pack(side="left")
     ttk.Button(botones, text="Abrir el clasificador", command=lambda: os.startfile(EMBUDO_URL)).pack(side="left", padx=6)
     ttk.Button(botones, text="Ver Arval en la web", command=lambda: os.startfile(ARVAL_WEB)).pack(side="left", padx=(0, 6))
     ttk.Button(botones, text="Ver registro", command=lambda: os.startfile(BITACORA) if BITACORA.exists() else None).pack(side="left")
+    refrescar()
+    if not cfg:   # primera vez en esta PC: las instrucciones se abren solas
+        raiz.after(300, lambda: ver_instrucciones(raiz))
     raiz.mainloop()
+
+
+def ver_instrucciones(raiz):
+    import tkinter as tk
+    from tkinter import ttk
+    v = tk.Toplevel(raiz)
+    v.title("Instrucciones · Clasificador de archivos")
+    v.geometry("760x640")
+    texto = tk.Text(v, wrap="word", font=("Segoe UI", 10), padx=14, pady=12, relief="flat")
+    barra = ttk.Scrollbar(v, command=texto.yview); texto.configure(yscrollcommand=barra.set)
+    pie = ttk.Frame(v, padding=10); pie.pack(side="bottom", fill="x")
+    barra.pack(side="right", fill="y"); texto.pack(side="left", fill="both", expand=True)
+    texto.insert("1.0", INSTRUCCIONES)
+    for linea, contenido in enumerate(INSTRUCCIONES.splitlines(), 1):
+        if contenido and contenido == contenido.upper() and not contenido.startswith(" "):
+            texto.tag_add("titulo", f"{linea}.0", f"{linea}.end")
+    texto.tag_configure("titulo", font=("Segoe UI", 10, "bold"), foreground="#173a6d")
+    texto.configure(state="disabled")
+    ttk.Button(pie, text="Ver Arval en la web", command=lambda: os.startfile(ARVAL_WEB)).pack(side="left")
+    ttk.Button(pie, text="Cerrar", command=v.destroy).pack(side="right")
 
 
 def main(argv):
