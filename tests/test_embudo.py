@@ -56,3 +56,18 @@ def test_no_escribe_en_una_carpeta_sin_marca(tmp_path):
     with pytest.raises(DestinoIncorrecto):
         colocar_paquete(zip_ruta, arval)
     assert list(arval.iterdir()) == []
+
+
+def test_documento_de_poliza_de_grupo_va_a_su_carpeta_y_no_cuenta_como_asegurado(tmp_path):
+    arval = tmp_path / "Arval"
+    (arval / MARCA).mkdir(parents=True)
+    r = colocar_paquete(_paquete(tmp_path, [
+        {"nombre": "endoso.pdf", "cliente": None, "nivel": "grupo", "grupo": "SAYER CLIENTES", "cartera": "SAYER CLIENTES",
+         "tipo": "Operación de seguro (no reembolso)", "fecha_doc": "2026-11-01"},
+        {"nombre": "receta.pdf", "cliente": "ANA RUIZ", "nivel": "asegurado", "cartera": "SAYER CLIENTES", "tipo": "Receta", "fecha_doc": "2026-11-02"},
+    ]), arval, hoy=date(2026, 11, 12))
+    assert r[0]["destino"] == "SAYER CLIENTES/_Póliza de grupo/20261101_SEGURO_01.pdf"
+    assert r[1]["destino"] == "SAYER CLIENTES/ANA RUIZ/2026-10_Expediente 20261030/20261102_RECETA_01.pdf"
+    from reembolsos.puente import catalogo_destino, expedientes_destino
+    assert [c.nombre for c in catalogo_destino(arval).clientes] == ["ANA RUIZ"]
+    assert [e["cliente"] for e in expedientes_destino(arval, hoy=date(2026, 11, 12))] == ["ANA RUIZ"]

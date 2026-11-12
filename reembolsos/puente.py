@@ -43,7 +43,7 @@ def catalogo_destino(destino, extra=None):
     destino = Path(destino)
     filas = []
     for cartera in sorted(p for p in destino.iterdir() if p.is_dir() and not p.name.startswith("_")) if destino.exists() else []:
-        for cliente in sorted(p for p in cartera.iterdir() if p.is_dir()):
+        for cliente in sorted(p for p in cartera.iterdir() if p.is_dir() and not p.name.startswith("_")):
             filas.append({"NombreCliente": cliente.name, "Cartera": cartera.name})
     vistos = {normalizar(f["NombreCliente"]) for f in filas}
     for f in extra or []:
@@ -345,7 +345,7 @@ def expedientes_destino(destino, hoy=None, llegadas=None):
     if not destino.exists():
         return salida
     for cartera in (p for p in destino.iterdir() if p.is_dir() and not p.name.startswith("_")):
-        for cliente in (p for p in cartera.iterdir() if p.is_dir()):
+        for cliente in (p for p in cartera.iterdir() if p.is_dir() and not p.name.startswith("_")):   # _Póliza de grupo no es un asegurado
             for ev in (p for p in cliente.iterdir() if p.is_dir()):
                 tipos = set()
                 for f in ev.rglob("*"):

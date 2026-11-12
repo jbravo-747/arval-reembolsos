@@ -222,6 +222,28 @@ a{color:var(--accent)}
   const TIPOS_OK = /\.(pdf|xml|png|jpe?g|webp|bmp)$/i;
   const MAX_TEXTO_IA = 7000;   // caracteres del documento que ve Claude (no se guardan)
   const PALABRAS_VACIAS = new Set(["DE","DEL","LA","LAS","LOS","Y","EL","SA","CV","SAPI","S","A","C","V"]);
+  // Pólizas de grupo que maneja Lau (primer nivel de Arval); los asegurados sin grupo van en ARVAL CLIENTES.
+  // El grupo se reconoce por el número de póliza (lo más seguro) o por el nombre de la empresa en el documento.
+  const GRUPOS = [
+    { carpeta: "SAYER CLIENTES", nombre: "Sayer", claves: ["SAYER"], polizas: ["42681726", "42681727", "42682059", "42682997"] },
+    { carpeta: "BANCO DE ALIMENTOS", nombre: "Banco de Alimentos (BAMEX)", claves: ["BANCO DE ALIMENTOS", "BAMEX"], polizas: [] }];
+  const SIN_GRUPO = "ARVAL CLIENTES";
+  const POLIZA_GRUPO = "_Póliza de grupo";   // documentos de la póliza de todo el grupo (carátula, endosos, renovación)
+  const etiquetaCartera = (c) => (GRUPOS.find(g => g.carpeta === c) || {}).nombre || (c === SIN_GRUPO ? "Sin grupo (individual)" : c || "");
+  function grupoEnTexto(N){   // { carpeta, porPoliza }: porPoliza = trae el número de póliza del grupo, no solo el nombre de la empresa
+    const conEsp = " " + N + " ", sinEsp = N.replace(/ /g, "");
+    const p = GRUPOS.find(x => x.polizas.some(n => sinEsp.includes(n)));
+    const g = p || GRUPOS.find(x => x.claves.some(k => conEsp.includes(" " + k + " ")));
+    return { carpeta: g ? g.carpeta : "", porPoliza: !!p };
+  }
+  // Un nombre completo puede venir con los apellidos primero («CASARES MERINO EURY»): se aceptan ambos órdenes
+  function variantes(nombre){
+    const t = normaliza(nombre).split(" ").filter(Boolean);
+    const v = [t.join(" ")];
+    if (t.length === 2) v.push([t[1], t[0]].join(" "));
+    if (t.length >= 3) v.push([...t.slice(-2), ...t.slice(0, -2)].join(" "));
+    return v;
+  }
 
   const estado = { items: new Map(), cola: [], trabajando: false, asegurados: [], catalogo: [], carteraDe: new Map(), historial: [], uid: null };
   let db = null, sample = null, downloads = null;
@@ -234,16 +256,14 @@ a{color:var(--accent)}
     estado.catalogo = [...new Set([...estado.catalogoBase, ...nuevos.map(n => n.cliente)])];
     prepararBase([...estado.base, ...nuevos]);
   }
-  function carteras(){
-    const cuenta = new Map();
-    estado.asegurados.forEach(a => a.cartera && cuenta.set(a.cartera, (cuenta.get(a.cartera) || 0) + 1));
-    return [...cuenta.entries()].sort((x, y) => y[1] - x[1]).map(([c]) => c);
+  function carteras(){   // primero los grupos de Lau, luego sin grupo y cualquier otra carpeta que exista en la base
+    return [...new Set([...GRUPOS.map(g => g.carpeta), SIN_GRUPO, ...estado.asegurados.map(a => a.cartera).filter(Boolean)])];
   }
   function prepararBase(lista){
     estado.asegurados = (lista || []).map(a => {
       const fichas = (n) => normaliza(n).split(" ").filter(w => w.length >= 3 && !PALABRAS_VACIAS.has(w));
-      return { ...a, _nombre: normaliza(a.nombre), _tokens: fichas(a.nombre), _rfc: normaliza(a.rfc).replace(/ /g, ""),
-        _personas: (a.personas || []).map(p => ({ nombre: p, _n: normaliza(p), _tokens: fichas(p) })),
+      return { ...a, _nombre: normaliza(a.nombre), _nombres: variantes(a.nombre), _tokens: fichas(a.nombre), _rfc: normaliza(a.rfc).replace(/ /g, ""),
+        _personas: (a.personas || []).map(p => ({ nombre: p, _n: normaliza(p), _ns: variantes(p), _tokens: fichas(p) })),
         _polizas: (a.polizas || []).map(p => normaliza(p).replace(/ /g, "")).filter(p => p.length >= 5),
         _txt: normaliza([a.nombre, a.rfc, a.cliente, ...(a.personas || []), ...(a.polizas || [])].join(" ")) };
     });
@@ -269,12 +289,12 @@ a{color:var(--accent)}
     };
     for (const a of estado.asegurados) {
       if (a._rfc.length >= 12 && sinEsp.includes(a._rfc)) anota(a, 100, `RFC ${a.rfc}`);
-      if (a._tokens.length >= 2 && N.includes(" " + a._nombre + " ")) anota(a, 92, "nombre completo del asegurado");
+      if (a._tokens.length >= 2 && a._nombres.some(v => N.includes(" " + v + " "))) anota(a, 92, "nombre completo del asegurado");
       else if (a._tokens.length >= 2 && a._tokens.every(w => palabras.has(w))) anota(a, 78, "todas las palabras del nombre");
       else if (a._tokens.length >= 3 && a._tokens.filter(w => palabras.has(w)).length >= a._tokens.length - 1) anota(a, 55, "nombre casi completo");
       for (const p of a._polizas) if (palabras.has(p) || sinEsp.includes(p) && p.length >= 8) anota(a, 85, `póliza ${p}`);
       for (const p of a._personas) {
-        if (p._tokens.length >= 2 && N.includes(" " + p._n + " ")) anota(a, 80, `relacionado: ${p.nombre}`);
+        if (p._tokens.length >= 2 && p._ns.some(v => N.includes(" " + v + " "))) anota(a, 80, `relacionado: ${p.nombre}`);
         else if (p._tokens.length >= 3 && p._tokens.every(w => palabras.has(w))) anota(a, 65, `relacionado: ${p.nombre}`);
       }
     }
@@ -355,10 +375,13 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     if (!sample) return null;
     const prompt = `Eres el clasificador de documentos de reembolsos de gastos médicos de Arval México (corredor de seguros).
 Recibes el texto de UN documento (puede traer errores de OCR) y candidatos que un buscador encontró en la base de asegurados.
+Contexto: Lau maneja dos pólizas de grupo, Sayer (SAYER LACK; pólizas ${GRUPOS[0].polizas.join(", ")}) y Banco de Alimentos (BAMEX), cuyos asegurados son empleados y sus dependientes, y además asegurados individuales sin grupo. Los nombres pueden venir con los apellidos primero.
 Responde SOLO un objeto JSON con estas claves:
 - "cliente": nombre EXACTO de la lista CLIENTES a quien pertenece el documento (el asegurado titular, aunque el paciente sea un dependiente), o null si el documento no lo nombra con claridad. Vale para TODO documento del asegurado, sea o no de reembolso (pólizas, endosos, identificaciones, estudios): todos van a su expediente.
 - "nombre_leido": nombre del asegurado, paciente o receptor tal como aparece en el documento, o null.
 - "tipo": uno de ${JSON.stringify(TIPOS)}.
+- "grupo": "SAYER CLIENTES" si el documento es de la póliza de grupo de Sayer, "BANCO DE ALIMENTOS" si es de la de Banco de Alimentos (BAMEX), o null.
+- "es_del_grupo": true si el documento trata de la póliza de grupo completa (carátula, endoso o renovación del grupo, listado de asegurados) y no de una persona en particular; si no, false.
 - "fecha_doc": fecha de emisión AAAA-MM-DD, o null.
 - "rfc": RFC del asegurado o receptor si aparece, o null.
 - "total": importe total si es factura o recibo (número), o null.
@@ -388,6 +411,20 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     const enCatalogo = (c) => c && estado.catalogo.includes(c);
     const top = locales[0], seg = locales[1];
     const unico = top && (!seg || seg.score <= top.score - 15);
+    it.nombre_leido = (ia && ia.nombre_leido) || (cfdi && cfdi.receptor) || "";
+    it.candidatos = locales;
+    // Documento de la póliza de grupo completa: va a <Grupo>/_Póliza de grupo, no a una persona
+    const grupoIA = ia && GRUPOS.some(g => g.carpeta === ia.grupo) ? ia.grupo : "";
+    it.grupo = it.grupoLeido || grupoIA || "";
+    const personaClara = top && top.score >= 90 && unico;
+    // Póliza, endoso o renovación con el número de póliza del grupo: es del grupo aunque mencione a una persona
+    const operacionDeGrupo = it.tipo === "Operación de seguro (no reembolso)" && (it.grupoPorPoliza || !personaClara);
+    if (it.grupo && ((ia && ia.es_del_grupo === true) || operacionDeGrupo)) {
+      Object.assign(it, { nivel: "grupo", cliente: null, sugerido: null, confianza: "Alta", identificado_por: "póliza de grupo " + etiquetaCartera(it.grupo),
+        motivo: (ia && ia.motivo) || "documento de la póliza de grupo", decidido_por: "embudo", etapa: "listo" });
+      return;
+    }
+    it.nivel = "asegurado";
     const iaCliente = ia && enCatalogo(ia.cliente) ? ia.cliente : null;
     let cliente = null, confianza = "Ninguna", por = "no identificado";
     if (top && top.score >= 90 && unico && (!iaCliente || iaCliente === top.cliente)) {
@@ -399,12 +436,16 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     } else if (top) {
       cliente = top.cliente; confianza = top.score >= 75 ? "Media" : "Baja"; por = top.razon;
     }
+    // El documento menciona un grupo distinto al del asegurado: no se guarda sin que Lau lo vea
+    const carteraCliente = cliente ? estado.carteraDe.get(cliente) : "";
+    if (cliente && it.grupoLeido && carteraCliente && carteraCliente !== it.grupoLeido) {
+      it.aviso = `El documento menciona ${etiquetaCartera(it.grupoLeido)}, pero el asegurado está en ${etiquetaCartera(carteraCliente)}`;
+      if (confianza === "Alta") confianza = "Media";
+    }
     it.sugerido = cliente;
     it.confianza = confianza;
     it.identificado_por = por;
-    it.nombre_leido = (ia && ia.nombre_leido) || (cfdi && cfdi.receptor) || "";
     it.motivo = (ia && ia.motivo) || (top ? top.razon : cfdi ? "receptor del CFDI no está en la base" : "sin nombre reconocible");
-    it.candidatos = locales;
     if (iaCliente && !locales.some(c => c.cliente === iaCliente)) it.candidatos = [{ cliente: iaCliente, cartera: estado.carteraDe.get(iaCliente) || "", score: 0, razon: "propuesto por Claude" }, ...locales];
     if (confianza === "Alta") { it.cliente = cliente; it.etapa = "listo"; it.decidido_por = "embudo"; }
     else it.etapa = "pregunta";
@@ -432,6 +473,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     it.fecha_doc = cfdi ? cfdi.fecha : fechaPorTexto(N);
     it.rfc = cfdi ? cfdi.rfc : ""; it.total = cfdi ? cfdi.total : "";
     const locales = N ? coincidencias(texto) : [];
+    ({ carpeta: it.grupoLeido, porPoliza: it.grupoPorPoliza } = grupoEnTexto(N));
     let ia = null;
     if (!cfdi && N.length >= 40) {
       it.etapa = "analizando"; it.avance = 0.8; pintar();
@@ -481,8 +523,9 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
   }
 
   // ---------- Base de datos del embudo ----------
-  const ENTRADA = (it) => ({ nombre: it.nombre, tamano: it.tamano, estado: it.etapa === "listo" ? (it.cliente ? "clasificado" : "por identificar") : it.etapa === "pregunta" ? "por confirmar" : it.etapa,
-    cliente: it.cliente || null, cartera: it.cliente ? (estado.carteraDe.get(it.cliente) || "") : "", sugerido: it.sugerido || null,
+  const ENTRADA = (it) => ({ nombre: it.nombre, tamano: it.tamano, estado: it.etapa === "listo" ? (it.cliente || it.nivel === "grupo" ? "clasificado" : "por identificar") : it.etapa === "pregunta" ? "por confirmar" : it.etapa,
+    cliente: it.cliente || null, cartera: it.nivel === "grupo" ? it.grupo : it.cliente ? (estado.carteraDe.get(it.cliente) || "") : "", sugerido: it.sugerido || null,
+    nivel: it.nivel || "asegurado", grupo: it.grupo || "",
     tipo: it.tipo || "Otro", fecha_doc: it.fecha_doc || "", rfc: it.rfc || "", total: it.total || "", confianza: it.confianza || "",
     identificado_por: it.identificado_por || "", candidato_cliente: it.candidato_cliente || null, nombre_leido: it.nombre_leido || "",
     motivo: it.motivo || "", metodo: it.metodo || "", decidido_por: it.decidido_por || "", por: estado.uid, hora: it.hora, actualizado: new Date().toISOString() });
@@ -504,7 +547,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     const it = estado.items.get(id); if (!it) return;
     const caja = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
     if (caja) { const t = caja.querySelector("select[data-campo=tipo]"), f = caja.querySelector("input[data-campo=fecha]"); if (t) it.tipo = t.value; if (f) it.fecha_doc = f.value; }
-    it.cliente = cliente; it.etapa = "listo"; it.decidido_por = como || "Lau"; it.candidato_cliente = null;
+    it.cliente = cliente; it.etapa = "listo"; it.decidido_por = como || "Lau"; it.candidato_cliente = null; it.nivel = "asegurado";
     if (cliente) { it.confianza = "Alta"; it.identificado_por = "confirmado por Lau"; }
     await guardarEntrada(it); await aprender(it); pintar();
     toast(cliente ? `Asignado a ${cliente}` : "Irá a _Por identificar");
@@ -538,6 +581,16 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     await guardarEntrada(it); pintar();
     toast(`${nombre} se agregó a la lista; su expediente se crea al guardar en OneDrive`);
   }
+  async function asignarGrupo(id, grupo){
+    const it = estado.items.get(id); if (!it) return;
+    if (!grupo) return toast("Elige la póliza de grupo");
+    const caja = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+    if (caja) { const t = caja.querySelector("select[data-campo=tipo]"), f = caja.querySelector("input[data-campo=fecha]"); if (t) it.tipo = t.value; if (f) it.fecha_doc = f.value; }
+    Object.assign(it, { nivel: "grupo", grupo, cliente: null, candidato_cliente: null, etapa: "listo", confianza: "Alta",
+      identificado_por: "póliza de grupo", decidido_por: "Lau (póliza de grupo)" });
+    await guardarEntrada(it); pintar();
+    toast(`Irá a ${grupo} / ${POLIZA_GRUPO}`);
+  }
   async function descartar(id){
     const it = estado.items.get(id); if (!it) return;
     it.etapa = "descartado"; await guardarEntrada(it, { estado: "descartado" }); estado.items.delete(id); pintar(); toast("Descartado");
@@ -546,9 +599,10 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
 
   // ---------- Paquete para OneDrive ----------
   const destinoDe = (it) => {
-    if (!it.cliente) return `_Por identificar / ${it.nombre}`;
     const ext = (it.nombre.match(/\.[^.]+$/) || [""])[0].toLowerCase();
     const f = (it.fecha_doc || it.hora.slice(0, 10)).replace(/-/g, "");
+    if (it.nivel === "grupo") return `${it.grupo} / ${POLIZA_GRUPO} / ${f}_${TIPO_CORTO[it.tipo] || "DOC"}_nn${ext}`;
+    if (!it.cliente) return `_Por identificar / ${it.nombre}`;
     return `${estado.carteraDe.get(it.cliente) || "_Sin cartera"} / ${it.cliente} / evento abierto o nuevo / ${f}_${TIPO_CORTO[it.tipo] || "DOC"}_nn${ext}`;
   };
   async function enviar(){
@@ -565,7 +619,8 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
       listos.forEach((it, i) => {
         const ruta = `archivos/${String(i + 1).padStart(3, "0")}_${it.nombre.replace(/[\\/:*?"<>|#%]+/g, " ")}`;
         zip.file(ruta, it.file);
-        manifiesto.archivos.push({ id: it.id, archivo: ruta, nombre: it.nombre, cliente: it.cliente || null, cartera: it.cliente ? (estado.carteraDe.get(it.cliente) || "") : "",
+        manifiesto.archivos.push({ id: it.id, archivo: ruta, nombre: it.nombre, cliente: it.cliente || null, nivel: it.nivel || "asegurado", grupo: it.grupo || "",
+          cartera: it.nivel === "grupo" ? it.grupo : it.cliente ? (estado.carteraDe.get(it.cliente) || "") : "",
           tipo: it.tipo || "Otro", fecha_doc: it.fecha_doc || "", fecha_recepcion: it.hora.slice(0, 10), confianza: it.confianza || "", decidido_por: it.decidido_por || "",
           candidato_cliente: it.candidato_cliente || null });
       });
@@ -591,7 +646,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
   function tarjetaDuda(it){
     const ops = (it.candidatos || []).slice(0, 4).map(c => `<button type="button" class="op" data-accion="asignar" data-cliente="${esc(c.cliente)}">
       <span class="k">${esc(c.cliente)}</span><span class="s">${c.cliente === it.sugerido ? "sugerido" : ""}</span>
-      <span class="r">${esc(c.cartera || estado.carteraDe.get(c.cliente) || "")} · ${esc(c.razon)}</span></button>`).join("");
+      <span class="r">${esc(etiquetaCartera(c.cartera || estado.carteraDe.get(c.cliente)))} · ${esc(c.razon)}</span></button>`).join("");
     return `<div class="archivo duda" data-id="${esc(it.id)}">
       <div class="q">¿De quién es <span style="overflow-wrap:anywhere">${esc(it.nombre)}</span>?</div>
       <div class="m"><span>${esc(it.tipo || "")}</span>${it.fecha_doc ? `<span>${esc(it.fecha_doc)}</span>` : ""}<span>${esc(it.metodo || "")}</span>${it.nombre_leido ? `<span>leído: “${esc(it.nombre_leido)}”</span>` : ""}${pillConf(it.confianza)}</div>
@@ -605,10 +660,12 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
         <div class="nuevo">
           <div class="nuevo-tit">¿Es un asegurado nuevo? Se agrega a la lista y se le abre su expediente.</div>
           <div class="campos"><input type="text" data-campo="nuevo" placeholder="Nombre completo del asegurado" value="${esc(it.nombre_leido || "")}" aria-label="Nombre completo del asegurado nuevo" style="flex:1 1 240px"></div>
-          <div class="campos"><label>Cartera <select data-campo="cartera">${carteras().map(c => `<option>${esc(c)}</option>`).join("") || "<option>ARVAL CLIENTES</option>"}</select></label>
+          <div class="campos"><label>Póliza de grupo <select data-campo="cartera">${it.grupoLeido ? "" : `<option value="">Elige…</option>`}${carteras().map(c => `<option value="${esc(c)}" ${c === it.grupoLeido ? "selected" : ""}>${esc(etiquetaCartera(c))}</option>`).join("")}</select></label>
             <label>RFC <input type="text" data-campo="rfcnuevo" placeholder="opcional" value="${esc(it.rfc || "")}" style="width:150px" aria-label="RFC del asegurado nuevo"></label></div>
           <div class="campos"><button class="btn min" type="button" data-accion="nuevo">Crear asegurado y su expediente</button></div>
         </div>
+        <div class="campos" style="margin-top:8px"><label>Es de la póliza de grupo completa <select data-campo="grupo">${GRUPOS.map(g => `<option value="${esc(g.carpeta)}" ${g.carpeta === it.grupoLeido ? "selected" : ""}>${esc(g.nombre)}</option>`).join("")}</select></label>
+          <button class="btn sec min" type="button" data-accion="grupo">Guardar en la póliza de grupo</button></div>
         <div class="campos" style="margin-top:8px"><button class="btn sec min" type="button" data-accion="sinCliente">No sé: mandar a _Por identificar</button>
         <button class="btn sec min" type="button" data-accion="descartar">No es un documento (firma, logo, repetido): descartar</button></div>
       </details></div>`;
@@ -616,7 +673,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
   function tarjetaListo(it){
     return `<div class="archivo" data-id="${esc(it.id)}">
       <div class="fila"><span class="nom">${esc(it.nombre)}</span>${pillConf(it.cliente ? it.confianza : "")}</div>
-      <div class="m"><span><b style="color:var(--fg)">${esc(it.cliente || (it.candidato_cliente ? "Alta pendiente: " + it.candidato_cliente : "Sin asegurado"))}</b></span><span>${esc(it.tipo)}</span>${it.fecha_doc ? `<span>${esc(it.fecha_doc)}</span>` : ""}<span>${esc(it.decidido_por === "embudo" ? it.identificado_por : it.decidido_por)}</span></div>
+      <div class="m"><span><b style="color:var(--fg)">${esc(it.nivel === "grupo" ? "Póliza de grupo · " + etiquetaCartera(it.grupo) : it.cliente || (it.candidato_cliente ? "Alta pendiente: " + it.candidato_cliente : "Sin asegurado"))}</b></span><span>${esc(it.tipo)}</span>${it.fecha_doc ? `<span>${esc(it.fecha_doc)}</span>` : ""}<span>${esc(it.decidido_por === "embudo" ? it.identificado_por : it.decidido_por)}</span></div>
       <div class="ruta">${esc(destinoDe(it))}</div>
       <div class="fila"><span class="muted" style="font-size:.84rem">${esc(it.aviso || "")}</span><button class="btn sec min" type="button" data-accion="reabrir">Cambiar</button></div></div>`;
   }
@@ -667,7 +724,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     cont.classList.remove("vacio");
     const ESTADO = { enviado: "en OneDrive", clasificado: "clasificado", "por confirmar": "por confirmar", "por identificar": "por identificar", descartado: "descartado" };
     cont.innerHTML = `<div class="tabla-scroll"><table class="t"><thead><tr><th>Archivo</th><th>Asegurado</th><th>Tipo</th><th>Decidió</th><th>Estado</th><th>Hora</th></tr></thead><tbody>${h.map(e => `<tr>
-      <td>${esc(e.nombre)}</td><td>${esc(e.cliente || (e.candidato_cliente ? "alta: " + e.candidato_cliente : "—"))}</td><td>${esc(e.tipo)}</td>
+      <td>${esc(e.nombre)}</td><td>${esc(e.nivel === "grupo" ? "póliza de grupo · " + etiquetaCartera(e.grupo) : e.cliente || (e.candidato_cliente ? "alta: " + e.candidato_cliente : "—"))}</td><td>${esc(e.tipo)}</td>
       <td>${esc(e.decidido_por === "embudo" ? "automático · " + (e.identificado_por || "") : e.decidido_por || "")}</td><td>${esc(ESTADO[e.estado] || e.estado)}</td><td>${horaCorta(e.hora_envio || e.actualizado || e.hora)}</td></tr>`).join("")}</tbody></table></div>`;
   }
 
@@ -679,6 +736,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     if (a === "asignar") asignar(id, b.dataset.cliente);
     else if (a === "nuevo") clienteNuevo(id, caja.querySelector("[data-campo=nuevo]").value, caja.querySelector("[data-campo=cartera]").value, caja.querySelector("[data-campo=rfcnuevo]").value);
     else if (a === "sinCliente") asignar(id, null, "Lau (sin asegurado)");
+    else if (a === "grupo") asignarGrupo(id, caja.querySelector("[data-campo=grupo]").value);
     else if (a === "descartar") descartar(id);
     else if (a === "reabrir") reabrir(id);
   });

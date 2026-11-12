@@ -145,6 +145,7 @@ footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padd
         <div><b>Confirmas</b><span>solo cuando hay duda de a quién pertenece</span></div>
         <div><b>Se guardan</b><span>en Arval › Cartera › Cliente › Evento, con nombre estándar</span></div>
       </div>
+      <div class="nota"><b>Tres tipos de destino.</b> Los asegurados de las pólizas de grupo de <b>Sayer</b> y <b>Banco de Alimentos (BAMEX)</b> van dentro de su grupo; los documentos de la póliza de grupo completa (carátula, endosos, renovación) van a la carpeta <code>_Póliza de grupo</code> del grupo; y los asegurados <b>sin grupo</b> (individuales) van en ARVAL CLIENTES.</div>
       <div class="nota regla"><b>Regla de oro:</b> todo documento del asegurado va a su expediente, sea o no de reembolso. Una póliza, un endoso o una identificación también se guardan; un expediente puede existir sin reembolso todavía.</div>
     </section>
 
@@ -207,18 +208,19 @@ footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padd
         <p>Si el documento no deja claro de qué asegurado es, aparece una tarjeta con una pregunta. Arriba ves lo que se leyó (tipo, fecha, nombre leído) y la razón de la duda.</p>
         <ol class="lista">
           <li><b>Revisa Tipo y Fecha</b> y corrígelos si hace falta, <i>antes</i> de elegir al asegurado.</li>
-          <li><b>Haz clic en el asegurado correcto.</b> El marcado como «sugerido» es la mejor opción encontrada; debajo de cada nombre dice por qué aparece (nombre, RFC, póliza o un dependiente).</li>
+          <li><b>Haz clic en el asegurado correcto.</b> El marcado como «sugerido» es la mejor opción encontrada; debajo de cada nombre dice su grupo (Sayer, BAMEX o sin grupo) y por qué aparece (nombre, RFC, póliza o un dependiente).</li>
           <li>Si no está en la lista, <b>búscalo</b> por nombre, RFC, póliza o dependiente en el cuadro «Buscar otro».</li>
         </ol>
       </div>
       <div class="dos">
         <figure><img src="img/pregunta.png" alt="Tarjeta de pregunta con dos asegurados posibles, buscador, tipo y fecha" width="1280" height="1120" loading="lazy"><figcaption>Un clic en el asegurado correcto y el documento pasa a «Listos».</figcaption></figure>
-        <figure><img src="img/opciones.png" alt="Otras opciones: crear asegurado nuevo con nombre, cartera y RFC; mandar a Por identificar o descartar" width="1280" height="1720" loading="lazy"><figcaption>«Otras opciones» para los casos especiales.</figcaption></figure>
+        <figure><img src="img/opciones.png" alt="Otras opciones: crear asegurado nuevo con nombre, cartera y RFC; mandar a Por identificar o descartar" width="1280" height="1880" loading="lazy"><figcaption>«Otras opciones» para los casos especiales.</figcaption></figure>
       </div>
       <div class="tabla-scroll"><table>
         <thead><tr><th>Otras opciones</th><th>Cuándo usarla</th></tr></thead>
         <tbody>
-          <tr><td><b>Crear asegurado y su expediente</b></td><td>La persona no está en la lista. Escribe su nombre completo, elige su <b>cartera</b> (y el RFC si lo tienes) y pulsa el botón: se agrega a la lista de asegurados, el documento queda listo para su expediente nuevo (<code>Cartera › Nombre › Evento</code>) y sus siguientes documentos se reconocen solos. Si el nombre ya existía, se asigna a esa persona sin duplicarla.</td></tr>
+          <tr><td><b>Crear asegurado y su expediente</b></td><td>La persona no está en la lista. Escribe su nombre completo, elige su <b>póliza de grupo</b> (Sayer, Banco de Alimentos o «Sin grupo» si es individual; el clasificador propone la que leyó) y el RFC si lo tienes, y pulsa el botón: se agrega a la lista de asegurados, el documento queda listo para su expediente nuevo (<code>Cartera › Nombre › Evento</code>) y sus siguientes documentos se reconocen solos. Si el nombre ya existía, se asigna a esa persona sin duplicarla.</td></tr>
+          <tr><td><b>Guardar en la póliza de grupo</b></td><td>El documento es de la póliza de grupo completa (carátula, endoso, renovación, listado) y no de una persona. Elige Sayer o BAMEX: se guarda en <code>_Póliza de grupo</code> de ese grupo. Las pólizas que traen el número de póliza del grupo se mandan ahí solas.</td></tr>
           <tr><td><b>No sé: mandar a _Por identificar</b></td><td>No sabes de quién es. Se guarda en OneDrive sin asegurado para resolverlo después; no se pierde.</td></tr>
           <tr><td><b>No es un documento: descartar</b></td><td>Solo para lo que no es un documento: una firma, un logo, una imagen repetida. <b>Nunca</b> para pólizas u otros documentos que no sean de reembolso: esos van a su expediente.</td></tr>
         </tbody>
@@ -235,7 +237,7 @@ footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padd
           <li>Si algo no está bien, pulsa <b>Cambiar</b>: la tarjeta regresa a «Te pregunto».</li>
         </ul>
       </div>
-      <figure class="angosta"><img src="img/listos.png" alt="Lista de documentos listos con su asegurado, tipo, fecha y ruta de destino" width="1280" height="1520" loading="lazy"><figcaption>Tres documentos listos: una factura y una póliza del mismo asegurado, y una foto sin asegurado que irá a _Por identificar.</figcaption></figure>
+      <figure class="angosta"><img src="img/listos.png" alt="Lista de documentos listos con su asegurado, tipo, fecha y ruta de destino" width="1280" height="1520" loading="lazy"><figcaption>Tres documentos listos: una factura de un asegurado de Sayer, un endoso que va a la póliza de grupo de Sayer y una foto sin asegurado que irá a _Por identificar.</figcaption></figure>
     </section>
 
     <section class="paso" id="guardar">
@@ -256,13 +258,16 @@ footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padd
       <div class="cuerpo">
         <p>Todo queda en la carpeta compartida <b>Arval</b> (OneDrive de soluciones@), con esta estructura y nombres estándar:</p>
       </div>
-<div class="arbol" role="img" aria-label="Árbol de carpetas de Arval con carteras, clientes, eventos y archivos"><span class="c">Arval</span>
-├── <span class="c">ARVAL CLIENTES</span>                       <span class="x">← cartera</span>
-│   └── <span class="c">JUAN EJEMPLO LÓPEZ</span>               <span class="x">← asegurado</span>
+<div class="arbol" role="img" aria-label="Árbol de carpetas de Arval con pólizas de grupo, asegurados, eventos y archivos"><span class="c">Arval</span>
+├── <span class="c">SAYER CLIENTES</span>                       <span class="x">← póliza de grupo</span>
+│   ├── <span class="c">_Póliza de grupo</span>                 <span class="x">← carátula, endosos, renovación del grupo</span>
+│   │   └── <span class="f">20261028_SEGURO_01.pdf</span>
+│   └── <span class="c">JUAN EJEMPLO LÓPEZ</span>               <span class="x">← asegurado afectado</span>
 │       └── <span class="c">2026-11_Expediente 20261105</span>  <span class="x">← evento (mes y fecha en que llegó)</span>
-│           ├── <span class="f">20261102_CFDI_01.xml</span>      <span class="x">← fecha del documento + tipo + número</span>
-│           └── <span class="f">20261028_SEGURO_01.pdf</span>
-├── <span class="c">SAYER CLIENTES</span>
+│           └── <span class="f">20261102_CFDI_01.xml</span>      <span class="x">← fecha del documento + tipo + número</span>
+├── <span class="c">BANCO DE ALIMENTOS</span>                   <span class="x">← póliza de grupo (BAMEX)</span>
+├── <span class="c">ARVAL CLIENTES</span>                       <span class="x">← asegurados sin grupo (individuales)</span>
+│   └── <span class="c">MARÍA EJEMPLO PÉREZ</span>
 ├── <span class="c">_Por identificar</span>                     <span class="x">← lo que se mandó sin asegurado</span>
 │   └── <span class="f">foto_borrosa.jpg</span>
 ├── <span class="c">_Embudo</span>                              <span class="x">← registro del programa (no tocar)</span>

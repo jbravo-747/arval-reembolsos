@@ -1,6 +1,7 @@
 """Paquetes del Embudo de expedientes: lo que Lau clasifica en el artifact llega como ARVAL_EMBUDO_<lote>.zip (archivos +
 manifiesto.json) a Descargas, y aquí se acomoda en la carpeta Arval sincronizada con OneDrive:
   <Cartera>/<Cliente>/<AAAA-MM_Evento>/<AAAAMMDD>_<TIPO>_<nn>.ext   (evento abierto a 10 días o menos, o uno nuevo)
+  <Grupo>/_Póliza de grupo/<AAAAMMDD>_<TIPO>_<nn>.ext               (documento de la póliza de grupo completa)
   _Por identificar/<nombre original>                                (sin asegurado)
 Nunca sobrescribe ni borra nada en Arval. Cada archivo colocado se anota en Arval/_Embudo/registro.jsonl (solo metadatos).
 """
@@ -16,6 +17,7 @@ from .puente import POR_IDENTIFICAR, _siguiente_nombre, carpeta_evento
 
 PATRON_PAQUETE = "ARVAL_EMBUDO_*.zip"
 CARPETA_REGISTRO = "_Embudo"
+POLIZA_GRUPO = "_Póliza de grupo"   # dentro de la carpeta del grupo (SAYER CLIENTES, BANCO DE ALIMENTOS)
 
 
 def _fecha(texto, respaldo):
@@ -30,7 +32,7 @@ def carpeta_cliente(arval, cliente, cartera):
     buscado = normalizar(cliente)
     for c in sorted(p for p in arval.iterdir() if p.is_dir() and not p.name.startswith("_")):
         for p in c.iterdir():
-            if p.is_dir() and normalizar(p.name) == buscado:
+            if p.is_dir() and not p.name.startswith("_") and normalizar(p.name) == buscado:
                 return p
     return arval / limpiar(cartera or "_Sin cartera") / limpiar(cliente)
 
@@ -68,7 +70,11 @@ def colocar_paquete(zip_ruta, arval, hoy=None):
                     raise ValueError("falta en el paquete")
                 ext = Path(a.get("nombre") or a["archivo"]).suffix.lower()
                 f_rec = _fecha(a.get("fecha_recepcion"), hoy)
-                if a.get("cliente"):
+                if a.get("nivel") == "grupo" and a.get("grupo"):
+                    carpeta = arval / limpiar(a["grupo"]) / POLIZA_GRUPO
+                    base = f"{_fecha(a.get('fecha_doc'), f_rec):%Y%m%d}_{TIPO_CORTO.get(a.get('tipo'), 'DOC')}"
+                    final = carpeta / _siguiente_nombre(carpeta, base, ext, reservados)
+                elif a.get("cliente"):
                     cc = carpeta_cliente(arval, a["cliente"], a.get("cartera"))
                     en_corrida = eventos.setdefault(cc, {})
                     evento, nuevo = carpeta_evento(cc, f_rec, en_corrida, arval, None)

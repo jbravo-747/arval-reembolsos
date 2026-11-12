@@ -35,16 +35,17 @@ setTimeout(() => {
     <div class="m"><span>Receta</span><span>2026-11-03</span><span>OCR (foto)</span><span>leído: “Ma. Ejemplo Pérez”</span><span class="pill media">Media</span></div>
     <div class="m"><span>El paciente coincide con una dependiente de dos asegurados.</span></div>
     <div class="opciones">
-      <button type="button" class="op"><span class="k">MARÍA EJEMPLO PÉREZ</span><span class="s">sugerido</span><span class="r">ARVAL CLIENTES · nombre casi completo</span></button>
-      <button type="button" class="op"><span class="k">JORGE EJEMPLO RUIZ</span><span class="s"></span><span class="r">SAYER CLIENTES · relacionado: MARÍA EJEMPLO</span></button>
+      <button type="button" class="op"><span class="k">MARÍA EJEMPLO PÉREZ</span><span class="s">sugerido</span><span class="r">Sayer · nombre casi completo</span></button>
+      <button type="button" class="op"><span class="k">JORGE EJEMPLO RUIZ</span><span class="s"></span><span class="r">Sin grupo (individual) · relacionado: MARÍA EJEMPLO</span></button>
     </div>
     <input type="search" placeholder="Buscar otro: nombre, RFC, póliza o dependiente">
     <div class="campos"><label>Tipo <select><option>Receta</option></select></label><label>Fecha <input type="date" value="2026-11-03"></label></div>
     <details class="mas" ${vista === "opciones" ? "open" : ""}><summary>Otras opciones</summary>
       <div class="nuevo"><div class="nuevo-tit">¿Es un asegurado nuevo? Se agrega a la lista y se le abre su expediente.</div>
         <div class="campos"><input type="text" value="MARÍA EJEMPLO PÉREZ GARZA" style="flex:1 1 240px"></div>
-        <div class="campos"><label>Cartera <select><option>ARVAL CLIENTES</option></select></label><label>RFC <input type="text" placeholder="opcional" style="width:150px"></label></div>
+        <div class="campos"><label>Póliza de grupo <select><option>Sayer</option></select></label><label>RFC <input type="text" placeholder="opcional" style="width:150px"></label></div>
         <div class="campos"><button class="btn min" type="button">Crear asegurado y su expediente</button></div></div>
+      <div class="campos" style="margin-top:8px"><label>Es de la póliza de grupo completa <select><option>Sayer</option></select></label><button class="btn sec min" type="button">Guardar en la póliza de grupo</button></div>
       <div class="campos" style="margin-top:8px"><button class="btn sec min" type="button">No sé: mandar a _Por identificar</button>
       <button class="btn sec min" type="button">No es un documento (firma, logo, repetido): descartar</button></div>
     </details></div>`;
@@ -54,8 +55,8 @@ setTimeout(() => {
   const listo = (nom, quien, conf, tipo, fecha, por, ruta) => `<div class="archivo"><div class="fila"><span class="nom">${nom}</span>${conf ? `<span class="pill ${conf.toLowerCase()}">${conf}</span>` : ""}</div>
     <div class="m"><span><b style="color:var(--fg)">${quien}</b></span><span>${tipo}</span><span>${fecha}</span><span>${por}</span></div>
     <div class="ruta">${ruta}</div><div class="fila"><span class="muted" style="font-size:.84rem"></span><button class="btn sec min" type="button">Cambiar</button></div></div>`;
-  const listos = listo("factura_farmacia.xml", "JUAN EJEMPLO LÓPEZ", "Alta", "CFDI factura", "2026-11-02", "RFC", "ARVAL CLIENTES / JUAN EJEMPLO LÓPEZ / evento abierto o nuevo / 20261102_CFDI_nn.xml")
-    + listo("poliza_renovacion.pdf", "JUAN EJEMPLO LÓPEZ", "Alta", "Operación de seguro (no reembolso)", "2026-10-28", "nombre completo", "ARVAL CLIENTES / JUAN EJEMPLO LÓPEZ / evento abierto o nuevo / 20261028_SEGURO_nn.pdf")
+  const listos = listo("factura_farmacia.xml", "JUAN EJEMPLO LÓPEZ", "Alta", "CFDI factura", "2026-11-02", "RFC", "SAYER CLIENTES / JUAN EJEMPLO LÓPEZ / evento abierto o nuevo / 20261102_CFDI_nn.xml")
+    + listo("endoso_42681726.pdf", "Póliza de grupo · Sayer", "Alta", "Operación de seguro (no reembolso)", "2026-10-28", "póliza de grupo Sayer", "SAYER CLIENTES / _Póliza de grupo / 20261028_SEGURO_nn.pdf")
     + listo("foto_borrosa.jpg", "Sin asegurado", "", "Otro", "", "Lau (sin asegurado)", "_Por identificar / foto_borrosa.jpg");
   const historial = `<div class="tabla-scroll"><table class="t"><thead><tr><th>Archivo</th><th>Asegurado</th><th>Tipo</th><th>Decidió</th><th>Estado</th><th>Hora</th></tr></thead><tbody>
     <tr><td>factura_farmacia.xml</td><td>JUAN EJEMPLO LÓPEZ</td><td>CFDI factura</td><td>automático · RFC</td><td>en OneDrive</td><td>05 nov, 10:42</td></tr>
@@ -76,7 +77,7 @@ setTimeout(() => {
 
 VISTAS = {   # vista: (ancho, alto) en píxeles CSS
     "inicio": (1180, 470), "soltar": (1180, 380), "riel": (1180, 120), "leyendo": (640, 330),
-    "pregunta": (640, 560), "opciones": (640, 860), "listos": (640, 760), "historial": (1180, 260),
+    "pregunta": (640, 560), "opciones": (640, 940), "listos": (640, 760), "historial": (1180, 260),
 }
 
 

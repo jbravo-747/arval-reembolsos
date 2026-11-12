@@ -53,7 +53,7 @@ class ArvalGraph:
             for c in self._hijos(self.raiz):
                 if "folder" in c and not c["name"].startswith("_"):
                     for p in self._hijos(f"{self.raiz}/{c['name']}"):
-                        if "folder" in p:
+                        if "folder" in p and not p["name"].startswith("_"):   # _Póliza de grupo no es un asegurado
                             self._clientes.setdefault(normalizar(p["name"]), f"{self.raiz}/{c['name']}/{p['name']}")
         clave = normalizar(cliente)
         if clave not in self._clientes:
