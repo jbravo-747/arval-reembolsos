@@ -32,3 +32,6 @@ Al republicar: `files` con `img/*.png` y `root` en `embudo/manual`.
 El manual también va **dentro del clasificador** (botón «Manual»): al republicar `embudo.html`, incluir en `files`
 `manual/manual.html` y `manual/img/*.png` (root `embudo`). PDF: `python -I manual/generar_pdf.py` -> `manual/Manual_Clasificador_Arval.pdf`
 (fuera de git, `*.pdf`).
+
+`registro_a_entradas.py`: pasa `Arval/_Embudo/registro.jsonl` (lo que el agente colocó) a confirmaciones para la colección
+`entradas` (estado `colocado` + `destino`), con lo que el historial abre el archivo exacto. Lo aplica la rutina (paso 2b) o una sesión.

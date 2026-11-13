@@ -295,7 +295,12 @@ footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padd
 
     <section class="paso" id="historial">
       <h2>Historial</h2>
-      <div class="cuerpo"><p>Al final de la página queda el registro de todo lo clasificado, por cualquier persona: asegurado, tipo, quién lo decidió (el clasificador solo o tú) y si ya está en OneDrive. Sirve para saber si un documento ya se había guardado.</p></div>
+      <div class="cuerpo"><p>Al final de la página queda el registro de todo lo clasificado, por cualquier persona: asegurado, tipo, quién lo decidió (el clasificador solo o tú) y su estado. Sirve para saber si un documento ya se había guardado.</p>
+        <ul class="lista">
+          <li><b>descargado, esperando al programa:</b> el paquete se descargó, pero aún no se confirma que el programa lo acomodó. Si sigue así de un día para otro, revisa que el programa esté funcionando en esa computadora.</li>
+          <li><b>en OneDrive:</b> confirmado; el programa lo dejó en su expediente.</li>
+          <li><b>Haz clic en el nombre del archivo</b> para abrirlo en OneDrive: abre el archivo exacto cuando ya está confirmado y, mientras tanto, la carpeta del asegurado o de la póliza de grupo.</li>
+        </ul></div>
       <figure><img src="img/historial.png" alt="Tabla del historial con archivo, asegurado, tipo, quién decidió, estado y hora" width="2360" height="520" loading="lazy"><figcaption>«por confirmar» = quedó una pregunta sin responder: vuelve a soltar ese archivo.</figcaption></figure>
     </section>
 

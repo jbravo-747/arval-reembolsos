@@ -535,9 +535,12 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
       if (f.size > 25 * 1024 * 1024) { toast(`${f.name}: pesa más de 25 MB`); continue; }
       const id = await huella(f);
       if (estado.items.has(id)) { toast(`${f.name} ya está en el clasificador`); continue; }
-      const previo = estado.historial.find(h => h._id === id && ["enviado", "descartado"].includes(h.estado));
+      const previo = estado.historial.find(h => h._id === id && ["enviado", "descargado", "colocado", "descartado"].includes(h.estado));
       const it = { id, file: f, nombre: f.name, tamano: f.size, etapa: "recibido", avance: 0.05, hora: new Date().toISOString(),
-        aviso: previo ? `Ya se había ${previo.estado === "enviado" ? "mandado a OneDrive" : "descartado"} el ${horaCorta(previo.hora_envio || previo.hora)}` : "" };
+        aviso: previo ? `Ya se había ${previo.estado === "descartado" ? "descartado" : previo.estado === "colocado" ? "guardado en OneDrive" : "descargado para OneDrive"} el ${horaCorta(previo.hora_envio || previo.hora)}` : "",
+        // Se conserva el envío anterior: volver a soltar el archivo no borra dónde quedó
+        anterior: previo ? { estado: previo.estado, lote: previo.lote || null, destino: previo.destino || (previo.anterior && previo.anterior.destino) || null,
+          hora_envio: previo.hora_envio || null, cliente: previo.cliente || null } : null };
       estado.items.set(id, it); estado.cola.push(it);
     }
     pintar(); siguiente();
@@ -549,7 +552,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     nivel: it.nivel || "asegurado", grupo: it.grupo || "",
     tipo: it.tipo || "Otro", fecha_doc: it.fecha_doc || "", rfc: it.rfc || "", total: it.total || "", confianza: it.confianza || "",
     identificado_por: it.identificado_por || "", candidato_cliente: it.candidato_cliente || null, nombre_leido: it.nombre_leido || "",
-    motivo: it.motivo || "", metodo: it.metodo || "", decidido_por: it.decidido_por || "", corregido: !!it.corregido, propuesto: it.propuesto_original || it.sugerido || null,
+    motivo: it.motivo || "", metodo: it.metodo || "", decidido_por: it.decidido_por || "", corregido: !!it.corregido, propuesto: it.propuesto_original || it.sugerido || null, anterior: it.anterior || null,
     por: estado.uid, hora: it.hora, actualizado: new Date().toISOString() });
   async function guardarEntrada(it, extra){
     if (!db) return;
@@ -690,7 +693,8 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
       const data = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
       await downloads.save({ filename: `ARVAL_EMBUDO_${lote}.zip`, data });
       const hora_envio = new Date().toISOString();
-      for (const it of listos) { it.etapa = "enviado"; await guardarEntrada(it, { estado: "enviado", lote, hora_envio }); estado.items.delete(it.id); }
+      // «descargado» hasta que el registro del programa (Arval/_Embudo/registro.jsonl) confirme que quedó en su expediente
+      for (const it of listos) { it.etapa = "enviado"; await guardarEntrada(it, { estado: "descargado", lote, hora_envio }); estado.items.delete(it.id); }
       estado.enviadosSesion = (estado.enviadosSesion || 0) + listos.length;
       toast(`Paquete guardado: ${listos.length} archivo(s). El agente los acomoda en OneDrive.`);
     } catch (e) {
@@ -779,14 +783,30 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
       : `<div class="muted" style="font-size:.88rem">Sin coincidencias en la base.</div>`;
   }
 
+  // Enlaces a OneDrive: el archivo exacto cuando el programa ya confirmó dónde lo dejó; mientras, la carpeta del asegurado
+  const ONEDRIVE_WEB = "https://arvalcommx-my.sharepoint.com/personal/soluciones_arval_com_mx/_layouts/15/onedrive.aspx";
+  const RAIZ_ARVAL = "/personal/soluciones_arval_com_mx/Documents/Arval";
+  const limpiarCarpeta = (t) => (String(t || "").replace(/[\\/:*?"<>|#%]+/g, " ").replace(/\s+/g, " ").trim().replace(/^[ .]+|[ .]+$/g, "").slice(0, 60).trim() || "SIN NOMBRE");
+  function enlaceOneDrive(e){
+    if (!["enviado", "descargado", "colocado"].includes(e.estado)) {   // se volvió a soltar: enlaza a donde quedó la vez anterior
+      return e.anterior && e.anterior.destino ? enlaceOneDrive({ estado: "colocado", destino: e.anterior.destino }) : null;
+    }
+    if (e.destino) {
+      const ruta = `${RAIZ_ARVAL}/${e.destino}`;
+      return { url: `${ONEDRIVE_WEB}?id=${encodeURIComponent(ruta)}&parent=${encodeURIComponent(ruta.slice(0, ruta.lastIndexOf("/")))}`, que: "Abrir el archivo en OneDrive" };
+    }
+    const carpeta = e.nivel === "grupo" ? `${limpiarCarpeta(e.grupo)}/_Póliza de grupo`
+      : e.cliente ? `${limpiarCarpeta(e.cartera || "_Sin cartera")}/${limpiarCarpeta(e.cliente)}` : "_Por identificar";
+    return { url: `${ONEDRIVE_WEB}?id=${encodeURIComponent(RAIZ_ARVAL + "/" + carpeta)}`, que: "Abrir su carpeta en OneDrive" };
+  }
   function pintarHistorial(){
     const h = estado.historial.slice().sort((a, b) => String(b.actualizado || b.hora).localeCompare(String(a.actualizado || a.hora))).slice(0, 40);
     const cont = $("historial");
     if (!h.length) return;
     cont.classList.remove("vacio");
-    const ESTADO = { enviado: "en OneDrive", clasificado: "clasificado", "por confirmar": "por confirmar", "por identificar": "por identificar", descartado: "descartado" };
+    const ESTADO = { enviado: "descargado, sin confirmar", descargado: "descargado, esperando al programa", colocado: "en OneDrive", clasificado: "clasificado", "por confirmar": "por confirmar", "por identificar": "por identificar", descartado: "descartado" };
     cont.innerHTML = `<div class="tabla-scroll"><table class="t"><thead><tr><th>Archivo</th><th>Asegurado</th><th>Tipo</th><th>Decidió</th><th>Estado</th><th>Hora</th></tr></thead><tbody>${h.map(e => `<tr>
-      <td>${esc(e.nombre)}</td><td>${esc(e.nivel === "grupo" ? "póliza de grupo · " + etiquetaCartera(e.grupo) : e.cliente || (e.candidato_cliente ? "alta: " + e.candidato_cliente : "—"))}</td><td>${esc(e.tipo)}</td>
+      <td>${(() => { const l = enlaceOneDrive(e); return l ? `<a href="${esc(l.url)}" target="_blank" rel="noopener" title="${esc(l.que)}">${esc(e.nombre)}</a>${l.que.includes("archivo") ? "" : `<div class="muted" style="font-size:.8rem">abre su carpeta</div>`}` : esc(e.nombre); })()}</td><td>${esc(e.nivel === "grupo" ? "póliza de grupo · " + etiquetaCartera(e.grupo) : e.cliente || (e.candidato_cliente ? "alta: " + e.candidato_cliente : "—"))}</td><td>${esc(e.tipo)}</td>
       <td>${esc(e.decidido_por === "embudo" ? "automático · " + (e.identificado_por || "") : e.decidido_por || "")}${e.corregido ? `<div class="muted" style="font-size:.82rem">corrigió: proponía ${esc(e.propuesto || "")}</div>` : ""}</td><td>${esc(ESTADO[e.estado] || e.estado)}</td><td>${horaCorta(e.hora_envio || e.actualizado || e.hora)}</td></tr>`).join("")}</tbody></table></div>`;
   }
 
