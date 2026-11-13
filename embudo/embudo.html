@@ -185,6 +185,11 @@ a{color:var(--accent)}
     <div class="sec-head"><h2>Historial</h2><span class="muted" id="notaHist">lo clasificado aquí, por cualquier persona</span></div>
     <div id="historial" class="vacio">Aquí queda el registro de cada documento: a quién se asignó, quién lo decidió y cuándo se mandó a OneDrive.</div>
   </section>
+
+  <section>
+    <div class="sec-head"><h2>Lo que aprendió el clasificador</h2><span class="muted">nombres que Lau le enseñó al elegir o corregir un asegurado</span></div>
+    <div id="aprendido" class="vacio">Cuando eliges o corriges un asegurado, el clasificador recuerda el nombre leído. Con una vez lo sugiere primero; con dos confirmaciones lo clasifica solo. Si algo quedó mal, aquí se puede olvidar.</div>
+  </section>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="capa" id="manualCapa" role="dialog" aria-modal="true" aria-label="Manual del Clasificador" hidden>
@@ -204,6 +209,8 @@ a{color:var(--accent)}
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const normaliza = (s) => String(s || "").normalize("NFD").replace(/\p{M}/gu, "").toUpperCase().replace(/[^A-Z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
   const toast = (msg) => { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), 2800); };
+  // Fecha en la hora de la computadora (México), no en UTC: después de las 6 p. m. UTC ya es el día siguiente
+  const fechaLocal = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   const horaCorta = (iso) => { const d = iso ? new Date(iso) : null; return d && !isNaN(d) ? d.toLocaleString("es-MX", {day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit"}) : ""; };
   const chip = (id, clase, texto) => { const c = $(id); c.className = "chip " + clase; c.innerHTML = `<span class="dot"></span>${esc(texto)}`; };
 
@@ -436,6 +443,19 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     } else if (top) {
       cliente = top.cliente; confianza = top.score >= 75 ? "Media" : "Baja"; por = top.razon;
     }
+    // Lo que Lau enseñó: con 2 confirmaciones decide; con 1 solo sugiere. Un RFC de otra persona siempre gana y se pregunta.
+    const ap = it.aprendido || estado.aprendido.find(a => it.nombre_leido && normaliza(it.nombre_leido) === a.leido);
+    if (ap && enCatalogo(ap.cliente)) {
+      const ensenado = `lo enseñó Lau${(ap.confirmaciones || 1) > 1 ? ` (${ap.confirmaciones} veces)` : ""}`;
+      const rfcDeOtro = top && top.score >= 100 && top.cliente !== ap.cliente;
+      it.candidatos = [{ cliente: ap.cliente, cartera: estado.carteraDe.get(ap.cliente) || "", score: 0, razon: ensenado },
+        ...it.candidatos.filter(c => c.cliente !== ap.cliente)];
+      if ((ap.confirmaciones || 1) >= 2 && !rfcDeOtro) { cliente = ap.cliente; confianza = "Alta"; por = ensenado; }
+      else {
+        if (cliente && cliente !== ap.cliente && confianza === "Alta") it.aviso = `El buscador propone ${cliente}, pero Lau enseñó que este nombre es de ${ap.cliente}`;
+        cliente = rfcDeOtro ? cliente : ap.cliente; confianza = "Media"; por = rfcDeOtro ? por : ensenado;
+      }
+    }
     // El documento menciona un grupo distinto al del asegurado: no se guarda sin que Lau lo vea
     const carteraCliente = cliente ? estado.carteraDe.get(cliente) : "";
     if (cliente && it.grupoLeido && carteraCliente && carteraCliente !== it.grupoLeido) {
@@ -446,7 +466,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     it.confianza = confianza;
     it.identificado_por = por;
     it.motivo = (ia && ia.motivo) || (top ? top.razon : cfdi ? "receptor del CFDI no está en la base" : "sin nombre reconocible");
-    if (iaCliente && !locales.some(c => c.cliente === iaCliente)) it.candidatos = [{ cliente: iaCliente, cartera: estado.carteraDe.get(iaCliente) || "", score: 0, razon: "propuesto por Claude" }, ...locales];
+    if (iaCliente && !it.candidatos.some(c => c.cliente === iaCliente)) it.candidatos = [...it.candidatos, { cliente: iaCliente, cartera: estado.carteraDe.get(iaCliente) || "", score: 0, razon: "propuesto por Claude" }];
     if (confianza === "Alta") { it.cliente = cliente; it.etapa = "listo"; it.decidido_por = "embudo"; }
     else it.etapa = "pregunta";
   }
@@ -473,6 +493,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     it.fecha_doc = cfdi ? cfdi.fecha : fechaPorTexto(N);
     it.rfc = cfdi ? cfdi.rfc : ""; it.total = cfdi ? cfdi.total : "";
     const locales = N ? coincidencias(texto) : [];
+    it.aprendido = N ? buscarAprendido(N) : null;
     ({ carpeta: it.grupoLeido, porPoliza: it.grupoPorPoliza } = grupoEnTexto(N));
     let ia = null;
     if (!cfdi && N.length >= 40) {
@@ -528,7 +549,8 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     nivel: it.nivel || "asegurado", grupo: it.grupo || "",
     tipo: it.tipo || "Otro", fecha_doc: it.fecha_doc || "", rfc: it.rfc || "", total: it.total || "", confianza: it.confianza || "",
     identificado_por: it.identificado_por || "", candidato_cliente: it.candidato_cliente || null, nombre_leido: it.nombre_leido || "",
-    motivo: it.motivo || "", metodo: it.metodo || "", decidido_por: it.decidido_por || "", por: estado.uid, hora: it.hora, actualizado: new Date().toISOString() });
+    motivo: it.motivo || "", metodo: it.metodo || "", decidido_por: it.decidido_por || "", corregido: !!it.corregido, propuesto: it.propuesto_original || it.sugerido || null,
+    por: estado.uid, hora: it.hora, actualizado: new Date().toISOString() });
   async function guardarEntrada(it, extra){
     if (!db) return;
     try { await db.doc("entradas/" + it.id).set({ ...ENTRADA(it), ...(extra || {}) }); }
@@ -542,13 +564,48 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     try { await db.doc(`actualizaciones/${it.id}-rfc`).set({ cliente: it.cliente, campo: "rfc", valor: it.rfc, archivo: it.nombre, por: estado.uid, hora: new Date().toISOString(), aplicada: false }); } catch (e) {}
   }
 
+  // ---------- Lo que aprende de Lau (colección compartida «aprendido»: nombre leído -> asegurado) ----------
+  estado.aprendido = [];
+  function buscarAprendido(N){
+    const conEsp = " " + N + " ";
+    return estado.aprendido.filter(a => a.cliente && a.leido && variantes(a.leido).some(v => conEsp.includes(" " + v + " ")))
+      .sort((x, y) => (y.confirmaciones || 1) - (x.confirmaciones || 1) || y.leido.length - x.leido.length)[0] || null;
+  }
+  async function aprenderDeLau(it, cliente){
+    const leido = normaliza(it.nombre_leido || "");
+    if (!cliente || leido.split(" ").length < 2 || normaliza(cliente) === leido) return;   // nada que enseñar si ya coincide tal cual
+    const previo = estado.aprendido.find(a => a.leido === leido);
+    const dato = { leido, leido_texto: it.nombre_leido, cliente, confirmaciones: previo && previo.cliente === cliente ? (previo.confirmaciones || 1) + 1 : 1,
+      anterior: previo && previo.cliente !== cliente ? previo.cliente : (previo && previo.anterior) || null, archivo: it.nombre, por: estado.uid, hora: new Date().toISOString() };
+    if (previo) Object.assign(previo, dato); else estado.aprendido.push(dato);
+    pintarAprendido();
+    if (db) { try { await db.doc("aprendido/" + leido.replace(/ /g, "_").slice(0, 150)).set(dato); } catch (e) {} }
+  }
+  async function olvidar(leido){
+    estado.aprendido = estado.aprendido.filter(a => a.leido !== leido); pintarAprendido();
+    if (db) { try { await db.doc("aprendido/" + leido.replace(/ /g, "_").slice(0, 150)).delete(); toast("Olvidado"); } catch (e) { toast("No se pudo olvidar; intenta de nuevo"); } }
+  }
+  function pintarAprendido(){
+    const cont = $("aprendido");
+    const lista = estado.aprendido.slice().sort((a, b) => String(b.hora).localeCompare(String(a.hora)));
+    if (!lista.length) { cont.classList.add("vacio"); cont.textContent = "Cuando eliges o corriges un asegurado, el clasificador recuerda el nombre leído. Con una vez lo sugiere primero; con dos confirmaciones lo clasifica solo. Si algo quedó mal, aquí se puede olvidar."; return; }
+    cont.classList.remove("vacio");
+    cont.innerHTML = `<div class="tabla-scroll"><table class="t"><thead><tr><th>Nombre leído</th><th>Es de</th><th>Cómo lo usa</th><th>Última vez</th><th></th></tr></thead><tbody>${lista.map(a => `<tr>
+      <td>${esc(a.leido_texto || a.leido)}</td><td>${esc(a.cliente)}${a.anterior ? `<div class="muted" style="font-size:.82rem">antes: ${esc(a.anterior)}</div>` : ""}</td>
+      <td>${(a.confirmaciones || 1) >= 2 ? `<span class="pill alta">automático</span> ${a.confirmaciones} confirmaciones` : `<span class="pill media">sugerencia</span> 1 confirmación`}</td>
+      <td>${horaCorta(a.hora)}</td><td><button class="btn sec min" type="button" data-accion="olvidar" data-leido="${esc(a.leido)}">Olvidar</button></td></tr>`).join("")}</tbody></table></div>`;
+  }
+
   // ---------- Decisiones de Lau ----------
   async function asignar(id, cliente, como){
     const it = estado.items.get(id); if (!it) return;
     const caja = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
     if (caja) { const t = caja.querySelector("select[data-campo=tipo]"), f = caja.querySelector("input[data-campo=fecha]"); if (t) it.tipo = t.value; if (f) it.fecha_doc = f.value; }
+    const propuesto = it.propuesto_original || it.sugerido || null;   // lo que proponía el clasificador antes de que Lau eligiera
+    it.corregido = !!(cliente && propuesto && propuesto !== cliente);
     it.cliente = cliente; it.etapa = "listo"; it.decidido_por = como || "Lau"; it.candidato_cliente = null; it.nivel = "asegurado";
-    if (cliente) { it.confianza = "Alta"; it.identificado_por = "confirmado por Lau"; }
+    if (cliente) { it.confianza = "Alta"; it.identificado_por = it.corregido ? "corregido por Lau" : "confirmado por Lau"; }
+    if (cliente && !como) await aprenderDeLau(it, cliente);
     await guardarEntrada(it); await aprender(it); pintar();
     toast(cliente ? `Asignado a ${cliente}` : "Irá a _Por identificar");
   }
@@ -575,6 +632,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     }
     if (!estado.nuevos.some(n => normaliza(n.cliente) === normaliza(nombre))) estado.nuevos.push(asegurado);
     recalcular();
+    await aprenderDeLau(it, nombre);
     it.cliente = nombre; it.candidato_cliente = null; it.etapa = "listo"; it.confianza = "Alta";
     it.identificado_por = "asegurado nuevo"; it.decidido_por = "Lau (asegurado nuevo)";
     if (rfc && !it.rfc) it.rfc = rfc;
@@ -595,12 +653,16 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     const it = estado.items.get(id); if (!it) return;
     it.etapa = "descartado"; await guardarEntrada(it, { estado: "descartado" }); estado.items.delete(id); pintar(); toast("Descartado");
   }
-  function reabrir(id){ const it = estado.items.get(id); if (!it) return; it.etapa = "pregunta"; it.cliente = null; pintar(); }
+  function reabrir(id){   // «Cambiar»: recuerda lo que había propuesto para saber si Lau lo corrige
+    const it = estado.items.get(id); if (!it) return;
+    if (!it.propuesto_original) it.propuesto_original = it.cliente || it.sugerido || null;
+    it.etapa = "pregunta"; it.cliente = null; pintar();
+  }
 
   // ---------- Paquete para OneDrive ----------
   const destinoDe = (it) => {
     const ext = (it.nombre.match(/\.[^.]+$/) || [""])[0].toLowerCase();
-    const f = (it.fecha_doc || it.hora.slice(0, 10)).replace(/-/g, "");
+    const f = (it.fecha_doc || fechaLocal(it.hora)).replace(/-/g, "");
     if (it.nivel === "grupo") return `${it.grupo} / ${POLIZA_GRUPO} / ${f}_${TIPO_CORTO[it.tipo] || "DOC"}_nn${ext}`;
     if (!it.cliente) return `_Por identificar / ${it.nombre}`;
     return `${estado.carteraDe.get(it.cliente) || "_Sin cartera"} / ${it.cliente} / evento abierto o nuevo / ${f}_${TIPO_CORTO[it.tipo] || "DOC"}_nn${ext}`;
@@ -621,7 +683,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
         zip.file(ruta, it.file);
         manifiesto.archivos.push({ id: it.id, archivo: ruta, nombre: it.nombre, cliente: it.cliente || null, nivel: it.nivel || "asegurado", grupo: it.grupo || "",
           cartera: it.nivel === "grupo" ? it.grupo : it.cliente ? (estado.carteraDe.get(it.cliente) || "") : "",
-          tipo: it.tipo || "Otro", fecha_doc: it.fecha_doc || "", fecha_recepcion: it.hora.slice(0, 10), confianza: it.confianza || "", decidido_por: it.decidido_por || "",
+          tipo: it.tipo || "Otro", fecha_doc: it.fecha_doc || "", fecha_recepcion: fechaLocal(it.hora), confianza: it.confianza || "", decidido_por: it.decidido_por || "",
           candidato_cliente: it.candidato_cliente || null });
       });
       zip.file("manifiesto.json", JSON.stringify(manifiesto, null, 1));
@@ -725,12 +787,13 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     const ESTADO = { enviado: "en OneDrive", clasificado: "clasificado", "por confirmar": "por confirmar", "por identificar": "por identificar", descartado: "descartado" };
     cont.innerHTML = `<div class="tabla-scroll"><table class="t"><thead><tr><th>Archivo</th><th>Asegurado</th><th>Tipo</th><th>Decidió</th><th>Estado</th><th>Hora</th></tr></thead><tbody>${h.map(e => `<tr>
       <td>${esc(e.nombre)}</td><td>${esc(e.nivel === "grupo" ? "póliza de grupo · " + etiquetaCartera(e.grupo) : e.cliente || (e.candidato_cliente ? "alta: " + e.candidato_cliente : "—"))}</td><td>${esc(e.tipo)}</td>
-      <td>${esc(e.decidido_por === "embudo" ? "automático · " + (e.identificado_por || "") : e.decidido_por || "")}</td><td>${esc(ESTADO[e.estado] || e.estado)}</td><td>${horaCorta(e.hora_envio || e.actualizado || e.hora)}</td></tr>`).join("")}</tbody></table></div>`;
+      <td>${esc(e.decidido_por === "embudo" ? "automático · " + (e.identificado_por || "") : e.decidido_por || "")}${e.corregido ? `<div class="muted" style="font-size:.82rem">corrigió: proponía ${esc(e.propuesto || "")}</div>` : ""}</td><td>${esc(ESTADO[e.estado] || e.estado)}</td><td>${horaCorta(e.hora_envio || e.actualizado || e.hora)}</td></tr>`).join("")}</tbody></table></div>`;
   }
 
   // ---------- Eventos ----------
   document.addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-accion]"); if (!b) return;
+    if (b.dataset.accion === "olvidar") return olvidar(b.dataset.leido);
     const caja = b.closest("[data-id]"); const id = caja && caja.dataset.id;
     const a = b.dataset.accion;
     if (a === "asignar") asignar(id, b.dataset.cliente);
@@ -806,6 +869,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     db.doc("catalogo/lista").onSnapshot((x) => { estado.catalogoBase = x.exists ? (x.data().nombres || []) : []; recalcular(); }, err);
     db.doc("asegurados/lista").onSnapshot((x) => { estado.base = x.exists ? (x.data().asegurados || []) : []; recalcular(); }, err);
     db.collection("nuevos").limit(500).onSnapshot((x) => { estado.nuevos = x.docs.map(d => d.data()); recalcular(); }, err);
+    db.collection("aprendido").limit(1000).onSnapshot((x) => { estado.aprendido = x.docs.map(d => d.data()); pintarAprendido(); }, err);
     db.collection("entradas").limit(300).onSnapshot((x) => { estado.historial = x.docs.map(d => ({ _id: d.id, ...d.data() })); pintarHistorial(); }, err);
   }
   pintar();

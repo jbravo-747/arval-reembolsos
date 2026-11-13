@@ -122,6 +122,7 @@ footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padd
     <a href="#guardar">6 · Guardar</a>
     <a href="#donde">Dónde queda cada archivo</a>
     <a href="#historial">Historial</a>
+    <a href="#aprende">Cómo aprende</a>
     <a href="#problemas">Si algo sale mal</a>
     <a href="#cuidados">Cuidados</a>
   </nav>
@@ -298,6 +299,20 @@ footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padd
       <figure><img src="img/historial.png" alt="Tabla del historial con archivo, asegurado, tipo, quién decidió, estado y hora" width="2360" height="520" loading="lazy"><figcaption>«por confirmar» = quedó una pregunta sin responder: vuelve a soltar ese archivo.</figcaption></figure>
     </section>
 
+    <section class="paso" id="aprende">
+      <h2>Cómo aprende de tus decisiones</h2>
+      <div class="cuerpo">
+        <p>Cada vez que eliges o corriges el asegurado de un documento, el clasificador recuerda <b>«este nombre leído es de este asegurado»</b>. Lo recuerda para todas las personas que lo usan.</p>
+        <ul class="lista">
+          <li><b>Una vez:</b> la siguiente vez que aparezca ese nombre, el asegurado sale primero como sugerido, con la nota «lo enseñó Lau», pero <b>todavía te pregunta</b>.</li>
+          <li><b>Dos confirmaciones del mismo asegurado:</b> desde entonces lo clasifica solo («lo enseñó Lau (2 veces)»).</li>
+          <li><b>Si corriges</b> un nombre que ya había aprendido, cambia al asegurado nuevo y vuelve a empezar en una confirmación. Así un error de dedo nunca se vuelve regla de inmediato.</li>
+          <li>Un <b>RFC</b> en el documento siempre pesa más que lo aprendido: si apunta a otra persona, te pregunta.</li>
+        </ul>
+        <p>Al final de la página, <b>«Lo que aprendió el clasificador»</b> muestra cada nombre aprendido, a quién corresponde, si ya es automático y un botón <b>Olvidar</b> para borrar lo que esté mal. El historial marca los documentos que <b>corregiste</b>, para revisar los errores que se repiten y mejorar las reglas.</p>
+      </div>
+    </section>
+
     <section class="paso" id="problemas">
       <h2>Si algo sale mal</h2>
       <div class="faqs">
@@ -310,7 +325,7 @@ footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padd
         <details class="faq"><summary>El asegurado no aparece ni buscándolo</summary>
           <p>Abre «Otras opciones», escribe su nombre completo, elige la cartera y pulsa <b>Crear asegurado y su expediente</b>. Queda en la lista al momento: su documento va a su propio expediente y los siguientes se reconocen solos.</p></details>
         <details class="faq"><summary>Me equivoqué de asegurado y ya lo guardé</summary>
-          <p>No lo borres. Mueve el archivo a la carpeta correcta en Arval y avisa a Joel para que el registro quede bien.</p></details>
+          <p>No lo borres. Mueve el archivo a la carpeta correcta en Arval y avisa a Joel para que el registro quede bien. Además, en «Lo que aprendió el clasificador» pulsa <b>Olvidar</b> en ese nombre, para que no lo vuelva a sugerir.</p></details>
         <details class="faq"><summary>Cerré la página antes de guardar</summary>
           <p>Los archivos que no se guardaron no llegaron a OneDrive. Vuelve a soltarlos; el clasificador reconoce los que ya se habían mandado.</p></details>
       </div>
