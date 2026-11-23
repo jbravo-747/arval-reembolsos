@@ -122,6 +122,7 @@ footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padd
     <a href="#guardar">6 · Guardar</a>
     <a href="#donde">Dónde queda cada archivo</a>
     <a href="#historial">Historial</a>
+    <a href="#lectura">Cómo lee</a>
     <a href="#aprende">Cómo aprende</a>
     <a href="#problemas">Si algo sale mal</a>
     <a href="#cuidados">Cuidados</a>
@@ -302,6 +303,22 @@ footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padd
           <li><b>Haz clic en el nombre del archivo</b> para abrirlo en OneDrive: abre el archivo exacto cuando ya está confirmado y, mientras tanto, la carpeta del asegurado o de la póliza de grupo.</li>
         </ul></div>
       <figure><img src="img/historial.png" alt="Tabla del historial con archivo, asegurado, tipo, quién decidió, estado y hora" width="2360" height="520" loading="lazy"><figcaption>«por confirmar» = quedó una pregunta sin responder: vuelve a soltar ese archivo.</figcaption></figure>
+    </section>
+
+    <section class="paso" id="lectura">
+      <h2>Cómo lee cada documento</h2>
+      <div class="cuerpo">
+        <p>Todo se lee en esta computadora; el contenido no se guarda.</p>
+        <ul class="lista">
+          <li><b>XML de factura:</b> se lee directo (receptor, RFC, fecha, total).</li>
+          <li><b>PDF:</b> se leen <b>todas las páginas</b> (hasta 15). Las páginas escaneadas o con imagen se leen con OCR a calidad de escaneo, aunque otras páginas traigan texto.</li>
+          <li><b>Fotos</b> (también las de iPhone, .heic): se enderezan si vienen giradas o de cabeza, se mejora el contraste y, si la primera lectura sale mala, se intenta de nuevo y se queda con la mejor.</li>
+          <li><b>Word (.docx):</b> se lee su texto.</li>
+          <li>Cuando el OCR no basta, <b>Claude ve también la imagen</b> de la página. La primera vez el navegador te pide permiso para mandarle imágenes.</li>
+          <li>Si aun así la lectura sale <b>mala</b>, el documento no se guarda solo: llega a «Te pregunto» con el aviso <i>«La lectura salió mala»</i> para que abras el documento y elijas.</li>
+        </ul>
+        <p>Un escaneo de muchas páginas puede tardar entre 30 segundos y un minuto; puedes seguir trabajando mientras tanto. El historial indica la calidad de lectura de cada documento («lectura regular» o «lectura mala») y arriba muestra el total de lecturas buenas, regulares y malas.</p>
+      </div>
     </section>
 
     <section class="paso" id="aprende">

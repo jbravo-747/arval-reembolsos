@@ -143,7 +143,7 @@ a{color:var(--accent)}
     <span class="grande">Suelta aquí los archivos</span>
     <span class="sub">o toca para elegirlos · PDF, fotos (JPG, PNG) y XML de facturas · varios a la vez</span>
     <span class="cuello" aria-hidden="true"></span>
-    <input type="file" id="archivos" multiple accept=".pdf,.xml,.png,.jpg,.jpeg,.webp,.bmp,application/pdf,text/xml,image/*">
+    <input type="file" id="archivos" multiple accept=".pdf,.xml,.png,.jpg,.jpeg,.webp,.bmp,.heic,.heif,.docx,application/pdf,text/xml,image/*">
   </label>
 
   <div class="riel" id="riel" aria-label="Etapas del clasificador">
@@ -226,8 +226,8 @@ a{color:var(--accent)}
     ["AVISO DE ACCIDENTE","Formato de reclamación"],["RECLAMACION","Formato de reclamación"],["INFORME DEL MEDICO","Formato de reclamación"],
     ["CREDENCIAL PARA VOTAR","Identificación"],["INE","Identificación"],["PASAPORTE","Identificación"],["COMPROBANTE DE PAGO","Comprobante de pago"],
     ["TRANSFERENCIA","Comprobante de pago"],["FACTURA","Factura PDF"],["CFDI","Factura PDF"],["FOLIO FISCAL","Factura PDF"]];
-  const TIPOS_OK = /\.(pdf|xml|png|jpe?g|webp|bmp)$/i;
-  const MAX_TEXTO_IA = 7000;   // caracteres del documento que ve Claude (no se guardan)
+  const TIPOS_OK = /\.(pdf|xml|png|jpe?g|webp|bmp|heic|heif|docx)$/i;
+  const MAX_TEXTO_IA = 20000;   // caracteres del documento que ve Claude (no se guardan)
   const PALABRAS_VACIAS = new Set(["DE","DEL","LA","LAS","LOS","Y","EL","SA","CV","SAPI","S","A","C","V"]);
   // Pólizas de grupo que maneja Lau (primer nivel de Arval); los asegurados sin grupo van en ARVAL CLIENTES.
   // El grupo se reconoce por el número de póliza (lo más seguro) o por el nombre de la empresa en el documento.
@@ -330,7 +330,63 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
   async function ocrDe(imagen){
     const w = await ocrWorker();
     const r = await w.recognize(imagen);
-    return r.data.text || "";
+    return { texto: r.data.text || "", confianza: Math.round(r.data.confidence || 0) };
+  }
+  // Prepara una página o foto para el OCR: la endereza (rotación), la lleva a tamaño de escaneo (~300 dpi),
+  // la pasa a escala de grises y estira el contraste. Devuelve un canvas.
+  async function prepararImagen(fuente, rotar = 0){
+    const img = fuente instanceof HTMLCanvasElement ? fuente : await createImageBitmap(fuente, { imageOrientation: "from-image" });
+    const w0 = img.width, h0 = img.height, largo = Math.max(w0, h0);
+    const f = largo < 1800 ? Math.min(3, 2200 / largo) : largo > 4000 ? 4000 / largo : 1;
+    const w = Math.round(w0 * f), h = Math.round(h0 * f);
+    const cv = document.createElement("canvas");
+    const giro = rotar % 180 !== 0;
+    cv.width = giro ? h : w; cv.height = giro ? w : h;
+    const g = cv.getContext("2d", { willReadFrequently: true });
+    g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height);
+    g.translate(cv.width / 2, cv.height / 2); g.rotate(rotar * Math.PI / 180);
+    g.imageSmoothingQuality = "high"; g.drawImage(img, -w / 2, -h / 2, w, h);
+    if (img.close) img.close();
+    const d = g.getImageData(0, 0, cv.width, cv.height), px = d.data, hist = new Uint32Array(256);
+    for (let i = 0; i < px.length; i += 4) { const y = (px[i] * 299 + px[i + 1] * 587 + px[i + 2] * 114) / 1000 | 0; px[i] = y; hist[y]++; }
+    const total = px.length / 4; let acc = 0, lo = 0, hi = 255;
+    // El texto suele ser una fracción mínima de la página: se toman percentiles chicos para no perderlo
+    for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > total * 0.002) { lo = v; break; } }
+    acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > total * 0.01) { hi = v; break; } }
+    const rango = hi - lo, estirar = rango >= 40 && rango < 235;   // si ya tiene buen contraste (o es plana) no se toca
+    for (let i = 0; i < px.length; i += 4) { const y = estirar ? Math.max(0, Math.min(255, (px[i] - lo) * 255 / rango)) : px[i]; px[i] = px[i + 1] = px[i + 2] = y; }
+    g.setTransform(1, 0, 0, 1, 0, 0); g.putImageData(d, 0, 0);
+    return cv;
+  }
+  const palabrasReales = (t) => (String(t).match(/[A-Za-zÁÉÍÓÚÑÜáéíóúñü]{3,}/g) || []).length;
+  const puntaje = (r) => r.confianza * Math.min(1, palabrasReales(r.texto) / 25);
+  // Lee con OCR probando rotaciones si la primera lectura sale mala; se queda con la mejor
+  async function ocrMejor(fuente, rotPreferida = 0){
+    const orden = [rotPreferida, ...[0, 90, 270, 180].filter(r => r !== rotPreferida)];
+    let mejor = null;
+    for (const rot of orden) {
+      const cv = await prepararImagen(fuente, rot);
+      const r = { ...(await ocrDe(cv)), rot, cv };
+      if (!mejor || puntaje(r) > puntaje(mejor)) mejor = r;
+      if (mejor.confianza >= 70 && palabrasReales(mejor.texto) >= 15) break;   // lectura buena: no hace falta otro intento
+    }
+    return mejor;
+  }
+  const calidadDe = (conf, palabras) => conf >= 70 && palabras >= 15 ? "buena" : conf >= 50 && palabras >= 8 ? "regular" : "mala";
+  // Reduce una página a JPEG para que Claude la vea cuando el OCR no basta
+  async function imagenParaClaude(cv){
+    const f = Math.min(1, 1600 / Math.max(cv.width, cv.height));
+    const c = document.createElement("canvas"); c.width = Math.round(cv.width * f); c.height = Math.round(cv.height * f);
+    c.getContext("2d").drawImage(cv, 0, 0, c.width, c.height);
+    return new Promise(res => c.toBlob(res, "image/jpeg", 0.85));
+  }
+  const scriptsCargados = new Map();
+  function cargarScript(url){
+    if (!scriptsCargados.has(url)) scriptsCargados.set(url, new Promise((ok, mal) => {
+      const sc = document.createElement("script"); sc.src = url; sc.onload = ok; sc.onerror = () => { scriptsCargados.delete(url); mal(new Error("no cargó " + url)); };
+      document.head.appendChild(sc);
+    }));
+    return scriptsCargados.get(url);
   }
   function leerCfdi(texto){
     const x = new DOMParser().parseFromString(texto, "application/xml");
@@ -343,26 +399,49 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     const tipo = tc === "I" ? (at(em, "RegimenFiscal") === "612" ? "CFDI recibo de honorarios" : "CFDI factura") : "CFDI otro";
     return { tipo, fecha: at(comp, "Fecha").slice(0, 10), total: at(comp, "Total"), receptor: at(re, "Nombre"), rfc: at(re, "Rfc"), emisor: at(em, "Nombre") };
   }
+  const MAX_PAGINAS = 15;
+  // Lee TODAS las páginas (hasta 15): las que traen texto se leen directo y las que son imagen, con OCR a ~300 dpi.
   async function leerPdf(it){
     const pdf = await pdfjsLib.getDocument({ data: await it.file.arrayBuffer(), isEvalSupported: false }).promise;
-    let texto = "";
-    const paginas = Math.min(pdf.numPages, 3);
-    for (let i = 1; i <= paginas; i++) {
-      const c = await (await pdf.getPage(i)).getTextContent();
-      texto += c.items.map(t => t.str).join(" ") + "\n";
-    }
-    if (texto.replace(/\s/g, "").length >= 80) return { texto, metodo: "texto del PDF" };
-    // Escaneo: se dibujan hasta 2 páginas y se leen con OCR local
-    let ocr = "";
-    for (let i = 1; i <= Math.min(pdf.numPages, 2); i++) {
+    const n = Math.min(pdf.numPages, MAX_PAGINAS);
+    let texto = "", conTexto = 0, conOcr = 0, sumaConf = 0, rot = 0;
+    const imagenes = [];
+    for (let i = 1; i <= n; i++) {
       const pag = await pdf.getPage(i);
-      const vp = pag.getViewport({ scale: 2 });
-      const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
-      await pag.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
-      it.avance = 0.3 + 0.3 * i; pintar();
-      ocr += await ocrDe(cv) + "\n";
+      const t = (await pag.getTextContent()).items.map(x => x.str).join(" ");
+      if (t.replace(/\s/g, "").length >= 40) { texto += t + "\n"; conTexto++; }
+      else {   // página escaneada (o PDF mixto): se dibuja a calidad de escaneo y se lee con OCR
+        const base = pag.getViewport({ scale: 1 });
+        const vp = pag.getViewport({ scale: Math.min(300 / 72, 3500 / Math.max(base.width, base.height)) });
+        const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+        await pag.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+        const r = await ocrMejor(cv, rot);
+        rot = r.rot;   // las demás páginas suelen venir igual de giradas
+        texto += r.texto + "\n"; conOcr++; sumaConf += r.confianza;
+        if (imagenes.length < 2) imagenes.push(r.cv);
+      }
+      it.avance = 0.2 + 0.55 * i / n; pintar();
     }
-    return { texto: ocr, metodo: "OCR (escaneo)" };
+    const confOcr = conOcr ? Math.round(sumaConf / conOcr) : 100;
+    const calidad = conOcr ? calidadDe(confOcr, palabrasReales(texto)) : (palabrasReales(texto) >= 8 ? "buena" : "mala");
+    const metodo = conOcr && conTexto ? "texto del PDF + OCR" : conOcr ? "OCR (escaneo)" : "texto del PDF";
+    return { texto, metodo, calidad, confOcr: conOcr ? confOcr : null, imagenes, paginas: pdf.numPages };
+  }
+  async function leerFoto(it){
+    let fuente = it.file;
+    if (/\.(heic|heif)$/i.test(it.nombre)) {   // foto de iPhone: se convierte a JPEG en el navegador
+      await cargarScript("https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js");
+      const b = await window.heic2any({ blob: it.file, toType: "image/jpeg", quality: 0.92 });
+      fuente = Array.isArray(b) ? b[0] : b;
+    }
+    const r = await ocrMejor(fuente);
+    return { texto: r.texto, metodo: "OCR (foto)", calidad: calidadDe(r.confianza, palabrasReales(r.texto)), confOcr: r.confianza, imagenes: [r.cv] };
+  }
+  async function leerWord(it){
+    await cargarScript("https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js");
+    const r = await window.mammoth.extractRawText({ arrayBuffer: await it.file.arrayBuffer() });
+    const texto = r.value || "";
+    return { texto, metodo: "texto de Word", calidad: palabrasReales(texto) >= 8 ? "buena" : "mala", confOcr: null, imagenes: [] };
   }
   function tipoPorTexto(N){
     for (const [p, t] of TIPO_POR_PALABRA) if (new RegExp("\\b" + p).test(N)) return t;
@@ -378,8 +457,21 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
   }
 
   // ---------- Análisis con Claude: tipo, fecha y asegurado, solo con metadatos de respuesta ----------
-  async function preguntarIA(it, texto, locales){
+  let limitesClaude = null;
+  async function imagenesPermitidas(canvases){
+    if (!canvases.length || !sample || !sample.limits) return [];
+    try { limitesClaude = limitesClaude || await sample.limits(); } catch (e) { return []; }
+    const lim = limitesClaude && limitesClaude.images; if (!lim) return [];
+    const blobs = [];
+    for (const cv of canvases.slice(0, Math.min(2, lim.maxCount || 1))) {
+      const b = await imagenParaClaude(cv);
+      if (b && (!lim.maxBytes || b.size <= lim.maxBytes)) blobs.push(b);
+    }
+    return blobs;
+  }
+  async function preguntarIA(it, texto, locales, canvases = []){
     if (!sample) return null;
+    const imgs = await imagenesPermitidas(canvases);
     const prompt = `Eres el clasificador de documentos de reembolsos de gastos médicos de Arval México (corredor de seguros).
 Recibes el texto de UN documento (puede traer errores de OCR) y candidatos que un buscador encontró en la base de asegurados.
 Contexto: Lau maneja dos pólizas de grupo, Sayer (SAYER LACK; pólizas ${GRUPOS[0].polizas.join(", ")}) y Banco de Alimentos (BAMEX), cuyos asegurados son empleados y sus dependientes, y además asegurados individuales sin grupo. Los nombres pueden venir con los apellidos primero.
@@ -399,15 +491,17 @@ No inventes. Si dudas entre dos clientes, usa confianza "Baja".
 ARCHIVO: ${it.nombre}
 CANDIDATOS: ${JSON.stringify(locales.map(c => ({ cliente: c.cliente, asegurado: c.asegurado, razon: c.razon })))}
 CLIENTES: ${JSON.stringify(estado.catalogo)}
-TEXTO DEL DOCUMENTO:
-${texto.slice(0, MAX_TEXTO_IA)}`;
+${imgs.length ? `Se adjuntan ${imgs.length} imagen(es) de las páginas del documento: el texto de OCR puede traer errores, así que cuando no coincidan confía en lo que ves en la imagen (nombres, RFC, fechas, número de póliza).\n` : ""}TEXTO DEL DOCUMENTO (${it.metodo || "lectura"}):
+${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`;
     try {
-      const r = await sample.json(prompt, { modelTier: "default" });
+      const r = await sample.json(prompt, imgs.length ? { modelTier: "default", images: imgs } : { modelTier: "default" });
+      if (imgs.length) it.metodo = (it.metodo || "") + " + imagen a Claude";
       chip("chIa", "ok", "Claude: analizando contigo");
       return r && typeof r === "object" ? r : null;
     } catch (e) {
       if (e && e.code === "not_granted") { sample = null; chip("chIa", "warn", "Claude: sin permiso, solo reglas locales"); }
       else if (e && e.code === "rate_limited") chip("chIa", "warn", "Claude: ocupado, reintenta en un momento");
+      else if (e && /^image/.test(e.code || "") && imgs.length) return preguntarIA(it, texto, locales, []);   // sin imágenes, solo texto
       else chip("chIa", "warn", "Claude: no respondió");
       return null;
     }
@@ -473,20 +567,22 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
 
   async function procesar(it){
     it.etapa = "leyendo"; it.avance = 0.15; pintar();
-    let texto = "", cfdi = null;
+    let texto = "", cfdi = null, imagenes = [];
     try {
       if (/\.xml$/i.test(it.nombre)) {
         cfdi = leerCfdi(await it.file.text());
         if (!cfdi) throw new Error("XML que no es CFDI");
         texto = `${cfdi.receptor} ${cfdi.rfc}`; it.metodo = "CFDI";
-      } else if (/\.pdf$/i.test(it.nombre)) {
-        const r = await leerPdf(it); texto = r.texto; it.metodo = r.metodo;
       } else {
-        it.avance = 0.4; pintar();
-        texto = await ocrDe(it.file); it.metodo = "OCR (foto)";
+        if (!/\.pdf$/i.test(it.nombre)) { it.avance = 0.3; pintar(); }
+        const r = /\.pdf$/i.test(it.nombre) ? await leerPdf(it) : /\.docx$/i.test(it.nombre) ? await leerWord(it) : await leerFoto(it);
+        texto = r.texto; it.metodo = r.metodo; it.calidad_lectura = r.calidad; it.conf_ocr = r.confOcr; imagenes = r.imagenes || [];
+        if (r.paginas > MAX_PAGINAS) it.aviso = `Se leyeron las primeras ${MAX_PAGINAS} de ${r.paginas} páginas`;
       }
+      if (cfdi) it.calidad_lectura = "buena";
     } catch (e) {
-      it.metodo = "sin lectura"; it.aviso = /OCR/.test(String(e && e.message)) ? "No se pudo leer con OCR en esta vista" : "No se pudo leer el archivo";
+      it.metodo = "sin lectura"; it.calidad_lectura = "mala";
+      it.aviso = /OCR/.test(String(e && e.message)) ? "No se pudo leer con OCR en esta vista" : /\.(heic|heif)$/i.test(it.nombre) ? "No se pudo convertir la foto de iPhone" : "No se pudo leer el archivo";
     }
     const N = normaliza(texto);
     it.tipo = cfdi ? cfdi.tipo : tipoPorTexto(N) || "Otro";
@@ -496,9 +592,11 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     it.aprendido = N ? buscarAprendido(N) : null;
     ({ carpeta: it.grupoLeido, porPoliza: it.grupoPorPoliza } = grupoEnTexto(N));
     let ia = null;
-    if (!cfdi && N.length >= 40) {
+    // Claude ve también la imagen de la página cuando el OCR no basta: lectura no buena, o el buscador no encontró a nadie claro
+    const verImagen = imagenes.length && /OCR/.test(it.metodo || "") && (it.calidad_lectura !== "buena" || !locales.length || locales[0].score < 90);
+    if (!cfdi && (N.length >= 40 || verImagen)) {
       it.etapa = "analizando"; it.avance = 0.8; pintar();
-      ia = await preguntarIA(it, texto, locales);
+      ia = await preguntarIA(it, texto, locales, verImagen ? imagenes : []);
       if (ia) {
         if (TIPOS.includes(ia.tipo)) it.tipo = ia.tipo;
         if (/^20\d{2}-\d{2}-\d{2}$/.test(ia.fecha_doc || "")) it.fecha_doc = ia.fecha_doc;
@@ -506,8 +604,13 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
         if (ia.total != null && ia.total !== "") it.total = String(ia.total);
       }
     }
-    texto = ""; // el contenido no se guarda ni sale de esta función
+    texto = ""; imagenes = []; // el contenido no se guarda ni sale de esta función
     decidir(it, locales, ia, cfdi);
+    // Lectura mala: no se guarda solo; se avisa para revisar la imagen en lugar de adivinar
+    if (!cfdi && it.calidad_lectura === "mala") {
+      it.aviso = (it.aviso ? it.aviso + " · " : "") + "La lectura salió mala: abre el documento y revisa a quién pertenece";
+      if (it.etapa === "listo" && it.decidido_por === "embudo") { it.etapa = "pregunta"; it.cliente = null; it.confianza = "Media"; }
+    }
     it.avance = 1;
     await guardarEntrada(it);
     if (it.etapa === "listo") await aprender(it);
@@ -552,7 +655,7 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     nivel: it.nivel || "asegurado", grupo: it.grupo || "",
     tipo: it.tipo || "Otro", fecha_doc: it.fecha_doc || "", rfc: it.rfc || "", total: it.total || "", confianza: it.confianza || "",
     identificado_por: it.identificado_por || "", candidato_cliente: it.candidato_cliente || null, nombre_leido: it.nombre_leido || "",
-    motivo: it.motivo || "", metodo: it.metodo || "", decidido_por: it.decidido_por || "", corregido: !!it.corregido, propuesto: it.propuesto_original || it.sugerido || null, anterior: it.anterior || null,
+    motivo: it.motivo || "", metodo: it.metodo || "", calidad_lectura: it.calidad_lectura || "", conf_ocr: it.conf_ocr == null ? null : it.conf_ocr, decidido_por: it.decidido_por || "", corregido: !!it.corregido, propuesto: it.propuesto_original || it.sugerido || null, anterior: it.anterior || null,
     por: estado.uid, hora: it.hora, actualizado: new Date().toISOString() });
   async function guardarEntrada(it, extra){
     if (!db) return;
@@ -804,9 +907,14 @@ ${texto.slice(0, MAX_TEXTO_IA)}`;
     const cont = $("historial");
     if (!h.length) return;
     cont.classList.remove("vacio");
+    const conCalidad = estado.historial.filter(e => e.calidad_lectura);
+    if (conCalidad.length) {
+      const c = (k) => conCalidad.filter(e => e.calidad_lectura === k).length;
+      $("notaHist").textContent = `lo clasificado aquí, por cualquier persona · lectura: ${c("buena")} buena, ${c("regular")} regular, ${c("mala")} mala`;
+    }
     const ESTADO = { enviado: "descargado, sin confirmar", descargado: "descargado, esperando al programa", colocado: "en OneDrive", clasificado: "clasificado", "por confirmar": "por confirmar", "por identificar": "por identificar", descartado: "descartado" };
     cont.innerHTML = `<div class="tabla-scroll"><table class="t"><thead><tr><th>Archivo</th><th>Asegurado</th><th>Tipo</th><th>Decidió</th><th>Estado</th><th>Hora</th></tr></thead><tbody>${h.map(e => `<tr>
-      <td>${(() => { const l = enlaceOneDrive(e); return l ? `<a href="${esc(l.url)}" target="_blank" rel="noopener" title="${esc(l.que)}">${esc(e.nombre)}</a>${l.que.includes("archivo") ? "" : `<div class="muted" style="font-size:.8rem">abre su carpeta</div>`}` : esc(e.nombre); })()}</td><td>${esc(e.nivel === "grupo" ? "póliza de grupo · " + etiquetaCartera(e.grupo) : e.cliente || (e.candidato_cliente ? "alta: " + e.candidato_cliente : "—"))}</td><td>${esc(e.tipo)}</td>
+      <td>${(() => { const l = enlaceOneDrive(e); return l ? `<a href="${esc(l.url)}" target="_blank" rel="noopener" title="${esc(l.que)}">${esc(e.nombre)}</a>${l.que.includes("archivo") ? "" : `<div class="muted" style="font-size:.8rem">abre su carpeta</div>`}` : esc(e.nombre); })()}</td><td>${esc(e.nivel === "grupo" ? "póliza de grupo · " + etiquetaCartera(e.grupo) : e.cliente || (e.candidato_cliente ? "alta: " + e.candidato_cliente : "—"))}</td><td>${esc(e.tipo)}${e.calidad_lectura && e.calidad_lectura !== "buena" ? `<div class="muted" style="font-size:.8rem">lectura ${esc(e.calidad_lectura)}${e.conf_ocr != null ? ` (${esc(e.conf_ocr)}%)` : ""}</div>` : ""}</td>
       <td>${esc(e.decidido_por === "embudo" ? "automático · " + (e.identificado_por || "") : e.decidido_por || "")}${e.corregido ? `<div class="muted" style="font-size:.82rem">corrigió: proponía ${esc(e.propuesto || "")}</div>` : ""}</td><td>${esc(ESTADO[e.estado] || e.estado)}</td><td>${horaCorta(e.hora_envio || e.actualizado || e.hora)}</td></tr>`).join("")}</tbody></table></div>`;
   }
 
