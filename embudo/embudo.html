@@ -334,8 +334,10 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
   }
   async function ocrDe(imagen){
     const w = await ocrWorker();
-    const r = await w.recognize(imagen);
-    return { texto: r.data.text || "", confianza: Math.round(r.data.confidence || 0) };
+    const r = await w.recognize(imagen, {}, { text: true, blocks: true });
+    const lineas = (r.data.blocks || []).flatMap(b => (b.paragraphs || []).flatMap(p => p.lines || []))
+      .map(l => ({ texto: l.text || "", bbox: l.bbox }));
+    return { texto: r.data.text || "", confianza: Math.round(r.data.confidence || 0), lineas };
   }
   // Prepara una página o foto para el OCR: la endereza (rotación), la lleva a tamaño de escaneo (~300 dpi),
   // la pasa a escala de grises y estira el contraste. Devuelve un canvas.
@@ -377,6 +379,24 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     }
     return mejor;
   }
+  // Campos de formato donde el nombre se escribe a mano (titular primero: es a quien pertenece el expediente)
+  const CAMPOS_NOMBRE = [
+    { clave: "titular", re: /(NOMBRE|APELLIDO).{0,60}(ASEGURADO )?TITULAR|TITULAR DE LA POLIZA|NOMBRE DEL CONTRATANTE/ },
+    { clave: "afectado", re: /(NOMBRE|APELLIDO).{0,60}(AFECTADO|PACIENTE|RECLAMANTE)/ },
+  ];
+  function recortarCampos(cv, lineas){
+    const out = [];
+    for (const campo of CAMPOS_NOMBRE) {
+      const l = (lineas || []).find(x => x.bbox && campo.re.test(normaliza(x.texto)));
+      if (!l) continue;
+      const b = l.bbox, h = Math.max(20, b.y1 - b.y0);
+      const y0 = Math.max(0, b.y0 - Math.round(h * 0.3)), y1 = Math.min(cv.height, b.y1 + Math.round(h * 3.2)), x0 = Math.max(0, b.x0 - 30);
+      const c = document.createElement("canvas"); c.width = cv.width - x0; c.height = y1 - y0;
+      c.getContext("2d").drawImage(cv, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
+      out.push({ clave: campo.clave, cv: c });
+    }
+    return out;
+  }
   const calidadDe = (conf, palabras) => conf >= 70 && palabras >= 15 ? "buena" : conf >= 50 && palabras >= 8 ? "regular" : "mala";
   // Reduce una página a JPEG para que Claude la vea cuando el OCR no basta
   async function imagenParaClaude(cv){
@@ -410,7 +430,7 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     const pdf = await pdfjsLib.getDocument({ data: await it.file.arrayBuffer(), isEvalSupported: false }).promise;
     const n = Math.min(pdf.numPages, MAX_PAGINAS);
     let texto = "", conTexto = 0, conOcr = 0, sumaConf = 0, rot = 0;
-    const imagenes = [];
+    const imagenes = [], campos = [];
     for (let i = 1; i <= n; i++) {
       const pag = await pdf.getPage(i);
       const t = (await pag.getTextContent()).items.map(x => x.str).join(" ");
@@ -423,6 +443,7 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
         const r = await ocrMejor(cv, rot);
         rot = r.rot;   // las demás páginas suelen venir igual de giradas
         texto += r.texto + "\n"; conOcr++; sumaConf += r.confianza;
+        if (campos.length < 2) campos.push(...recortarCampos(r.cv, r.lineas).filter(c => !campos.some(x => x.clave === c.clave)));
         if (imagenes.length < 2) imagenes.push(r.cv);
       }
       it.avance = 0.2 + 0.55 * i / n; pintar();
@@ -431,7 +452,7 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     const calidad = conOcr ? calidadDe(confOcr, palabrasReales(texto)) : (palabrasReales(texto) >= 8 ? "buena" : "mala");
     const metodo = conOcr && conTexto ? "texto del PDF + OCR" : conOcr ? "OCR (escaneo)" : "texto del PDF";
     it._pdf = pdf;
-    return { texto, metodo, calidad, confOcr: conOcr ? confOcr : null, imagenes, paginas: pdf.numPages };
+    return { texto, metodo, calidad, confOcr: conOcr ? confOcr : null, imagenes, campos, paginas: pdf.numPages };
   }
   async function paginasComoImagen(pdf, n){
     const out = [];
@@ -452,7 +473,7 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
       fuente = Array.isArray(b) ? b[0] : b;
     }
     const r = await ocrMejor(fuente);
-    return { texto: r.texto, metodo: "OCR (foto)", calidad: calidadDe(r.confianza, palabrasReales(r.texto)), confOcr: r.confianza, imagenes: [r.cv] };
+    return { texto: r.texto, metodo: "OCR (foto)", calidad: calidadDe(r.confianza, palabrasReales(r.texto)), confOcr: r.confianza, imagenes: [r.cv], campos: recortarCampos(r.cv, r.lineas) };
   }
   async function leerWord(it){
     await cargarScript("https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js");
@@ -480,15 +501,17 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     try { limitesClaude = limitesClaude || await sample.limits(); } catch (e) { return []; }
     const lim = limitesClaude && limitesClaude.images; if (!lim) return [];
     const blobs = [];
-    for (const cv of canvases.slice(0, Math.min(2, lim.maxCount || 1))) {
+    for (const cv of canvases.slice(0, Math.min(3, lim.maxCount || 1))) {
       const b = await imagenParaClaude(cv);
       if (b && (!lim.maxBytes || b.size <= lim.maxBytes)) blobs.push(b);
     }
     return blobs;
   }
-  async function preguntarIA(it, texto, locales, canvases = []){
+  async function preguntarIA(it, texto, locales, canvases = [], recortes = []){
     if (!sample) return null;
     const imgs = await imagenesPermitidas(canvases);
+    const nRec = Math.min(recortes.length, imgs.length);
+    const notaRecortes = nRec ? `Las primeras ${nRec} imagen(es) son recortes ampliados del formato: ${recortes.slice(0, nRec).map((c, i) => `imagen ${i + 1} = campo del nombre del ${c === "titular" ? "asegurado TITULAR (a quien pertenece el expediente)" : "asegurado afectado o paciente"}`).join("; ")}. El nombre suele estar escrito a mano y en orden apellido paterno, materno y nombre: léelo con cuidado, ponlo en "nombre_leido" (el del titular si aparece) y búscalo en CLIENTES en cualquier orden.\n` : "";
     const prompt = `Eres el clasificador de documentos de reembolsos de gastos médicos de Arval México (corredor de seguros).
 Recibes el texto de UN documento (puede traer errores de OCR) y candidatos que un buscador encontró en la base de asegurados.
 Contexto: Lau maneja dos pólizas de grupo, Sayer (SAYER LACK; pólizas ${GRUPOS[0].polizas.join(", ")}) y Banco de Alimentos (BAMEX), cuyos asegurados son empleados y sus dependientes, y además asegurados individuales sin grupo. Los nombres pueden venir con los apellidos primero.
@@ -508,7 +531,7 @@ No inventes. Si dudas entre dos clientes, usa confianza "Baja".
 ARCHIVO: ${it.nombre}${it.carpeta ? `\nCARPETA DE ORIGEN (pista, puede no coincidir): ${it.carpeta}` : ""}
 CANDIDATOS: ${JSON.stringify(locales.map(c => ({ cliente: c.cliente, asegurado: c.asegurado, razon: c.razon })))}
 CLIENTES: ${JSON.stringify(estado.catalogo)}
-${imgs.length ? `Se adjuntan ${imgs.length} imagen(es) de las páginas del documento: el texto de OCR puede traer errores y NO lee lo escrito a mano, así que lee en la imagen los datos manuscritos (sobre todo el nombre del titular o del paciente en los formatos) y, cuando no coincidan, confía en lo que ves (nombres, RFC, fechas, número de póliza).\n` : ""}TEXTO DEL DOCUMENTO (${it.metodo || "lectura"}):
+${notaRecortes}${imgs.length ? `Se adjuntan ${imgs.length} imagen(es) de las páginas del documento: el texto de OCR puede traer errores y NO lee lo escrito a mano, así que lee en la imagen los datos manuscritos (sobre todo el nombre del titular o del paciente en los formatos) y, cuando no coincidan, confía en lo que ves (nombres, RFC, fechas, número de póliza).\n` : ""}TEXTO DEL DOCUMENTO (${it.metodo || "lectura"}):
 ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`;
     try {
       const r = await sample.json(prompt, imgs.length ? { modelTier: "default", images: imgs } : { modelTier: "default" });
@@ -598,7 +621,7 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
 
   async function procesar(it){
     it.etapa = "leyendo"; it.avance = 0.15; pintar();
-    let texto = "", cfdi = null, imagenes = [];
+    let texto = "", cfdi = null, imagenes = [], campos = [];
     try {
       if (/\.xml$/i.test(it.nombre)) {
         cfdi = leerCfdi(await it.file.text());
@@ -607,7 +630,7 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
       } else {
         if (!/\.pdf$/i.test(it.nombre)) { it.avance = 0.3; pintar(); }
         const r = /\.pdf$/i.test(it.nombre) ? await leerPdf(it) : /\.docx$/i.test(it.nombre) ? await leerWord(it) : await leerFoto(it);
-        texto = r.texto; it.metodo = r.metodo; it.calidad_lectura = r.calidad; it.conf_ocr = r.confOcr; imagenes = r.imagenes || [];
+        texto = r.texto; it.metodo = r.metodo; it.calidad_lectura = r.calidad; it.conf_ocr = r.confOcr; imagenes = r.imagenes || []; campos = r.campos || [];
         if (r.paginas > MAX_PAGINAS) it.aviso = `Se leyeron las primeras ${MAX_PAGINAS} de ${r.paginas} páginas`;
       }
       if (cfdi) it.calidad_lectura = "buena";
@@ -637,7 +660,9 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
     const verImagen = imagenes.length && (/OCR/.test(it.metodo || "") ? (it.calidad_lectura !== "buena" || sinPersonaClara) : sinPersonaClara);
     if (!cfdi && (N.length >= 40 || verImagen)) {
       it.etapa = "analizando"; it.avance = 0.8; pintar();
-      ia = await preguntarIA(it, texto, locales, verImagen ? imagenes : []);
+      const recortes = sinPersonaClara ? campos : [];
+      it.campos_nombre = campos.map(c => c.clave);
+      ia = await preguntarIA(it, texto, locales, verImagen || recortes.length ? [...recortes.map(c => c.cv), ...imagenes] : [], recortes.map(c => c.clave));
       if (ia) {
         if (TIPOS.includes(ia.tipo)) it.tipo = ia.tipo;
         if (/^20\d{2}-\d{2}-\d{2}$/.test(ia.fecha_doc || "")) it.fecha_doc = ia.fecha_doc;
@@ -645,7 +670,16 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
         if (ia.total != null && ia.total !== "") it.total = String(ia.total);
       }
     }
-    texto = ""; imagenes = []; // el contenido no se guarda ni sale de esta función
+    // Lo que Claude leyó (p. ej. el nombre escrito a mano) se busca también en la base: respalda o corrige su propuesta
+    if (ia && ia.nombre_leido) {
+      for (const c of coincidencias(ia.nombre_leido)) {
+        const leido = { ...c, razon: `${c.razon} (leído por Claude)` };
+        const i = locales.findIndex(x => x.cliente === c.cliente);
+        if (i < 0) locales.push(leido); else if (locales[i].score < c.score) locales[i] = leido;
+      }
+      locales.sort((x, y) => y.score - x.score);
+    }
+    texto = ""; imagenes = []; campos = []; // el contenido no se guarda ni sale de esta función
     decidir(it, locales, ia, cfdi);
     // Lectura mala: no se guarda solo; se avisa para revisar la imagen en lugar de adivinar
     if (!cfdi && it.calidad_lectura === "mala") {
