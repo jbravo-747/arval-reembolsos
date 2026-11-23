@@ -269,7 +269,11 @@ a{color:var(--accent)}
   function prepararBase(lista){
     estado.asegurados = (lista || []).map(a => {
       const fichas = (n) => normaliza(n).split(" ").filter(w => w.length >= 3 && !PALABRAS_VACIAS.has(w));
-      return { ...a, _nombre: normaliza(a.nombre), _nombres: variantes(a.nombre), _tokens: fichas(a.nombre), _rfc: normaliza(a.rfc).replace(/ /g, ""),
+      const cortos = a.cliente && normaliza(a.cliente) !== normaliza(a.nombre) && fichas(a.cliente).length >= 2 ? variantes(a.cliente) : [];
+      const t = normaliza(a.nombre).split(" ").filter(Boolean);
+      // «APELLIDO1 APELLIDO2 NOMBRE» -> «NOMBRE APELLIDO1» y «NOMBRE APELLIDO1 APELLIDO2 -> NOMBRE APELLIDO1»: así se escribe a mano
+      const nomApe = t.length >= 3 ? [[t[t.length - 1], t[0]].join(" "), [t[0], t[1]].join(" ")] : [];
+      return { ...a, _nombre: normaliza(a.nombre), _nombres: [...variantes(a.nombre), ...cortos], _nomApe: nomApe, _tokens: fichas(a.nombre), _rfc: normaliza(a.rfc).replace(/ /g, ""),
         _personas: (a.personas || []).map(p => ({ nombre: p, _n: normaliza(p), _ns: variantes(p), _tokens: fichas(p) })),
         _polizas: (a.polizas || []).map(p => normaliza(p).replace(/ /g, "")).filter(p => p.length >= 5),
         _txt: normaliza([a.nombre, a.rfc, a.cliente, ...(a.personas || []), ...(a.polizas || [])].join(" ")) };
@@ -298,6 +302,7 @@ a{color:var(--accent)}
       if (a._rfc.length >= 12 && sinEsp.includes(a._rfc)) anota(a, 100, `RFC ${a.rfc}`);
       if (a._tokens.length >= 2 && a._nombres.some(v => N.includes(" " + v + " "))) anota(a, 92, "nombre completo del asegurado");
       else if (a._tokens.length >= 2 && a._tokens.every(w => palabras.has(w))) anota(a, 78, "todas las palabras del nombre");
+      else if ((a._nomApe || []).some(v => N.includes(" " + v + " "))) anota(a, 82, "nombre y primer apellido");
       else if (a._tokens.length >= 3 && a._tokens.filter(w => palabras.has(w)).length >= a._tokens.length - 1) anota(a, 55, "nombre casi completo");
       for (const p of a._polizas) if (palabras.has(p) || sinEsp.includes(p) && p.length >= 8) anota(a, 85, `póliza ${p}`);
       for (const p of a._personas) {
@@ -425,7 +430,19 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     const confOcr = conOcr ? Math.round(sumaConf / conOcr) : 100;
     const calidad = conOcr ? calidadDe(confOcr, palabrasReales(texto)) : (palabrasReales(texto) >= 8 ? "buena" : "mala");
     const metodo = conOcr && conTexto ? "texto del PDF + OCR" : conOcr ? "OCR (escaneo)" : "texto del PDF";
+    it._pdf = pdf;
     return { texto, metodo, calidad, confOcr: conOcr ? confOcr : null, imagenes, paginas: pdf.numPages };
+  }
+  async function paginasComoImagen(pdf, n){
+    const out = [];
+    for (let i = 1; i <= Math.min(n, pdf.numPages); i++) {
+      const pag = await pdf.getPage(i), base = pag.getViewport({ scale: 1 });
+      const vp = pag.getViewport({ scale: Math.min(2.5, 2000 / Math.max(base.width, base.height)) });
+      const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+      await pag.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+      out.push(cv);
+    }
+    return out;
   }
   async function leerFoto(it){
     let fuente = it.file;
@@ -488,10 +505,10 @@ Responde SOLO un objeto JSON con estas claves:
 - "motivo": una frase corta de por qué, SIN diagnósticos, medicamentos, padecimientos ni montos, y SIN nombres de personas (di "el paciente", "el receptor", "un dependiente").
 No inventes. Si dudas entre dos clientes, usa confianza "Baja".
 
-ARCHIVO: ${it.nombre}
+ARCHIVO: ${it.nombre}${it.carpeta ? `\nCARPETA DE ORIGEN (pista, puede no coincidir): ${it.carpeta}` : ""}
 CANDIDATOS: ${JSON.stringify(locales.map(c => ({ cliente: c.cliente, asegurado: c.asegurado, razon: c.razon })))}
 CLIENTES: ${JSON.stringify(estado.catalogo)}
-${imgs.length ? `Se adjuntan ${imgs.length} imagen(es) de las páginas del documento: el texto de OCR puede traer errores, así que cuando no coincidan confía en lo que ves en la imagen (nombres, RFC, fechas, número de póliza).\n` : ""}TEXTO DEL DOCUMENTO (${it.metodo || "lectura"}):
+${imgs.length ? `Se adjuntan ${imgs.length} imagen(es) de las páginas del documento: el texto de OCR puede traer errores y NO lee lo escrito a mano, así que lee en la imagen los datos manuscritos (sobre todo el nombre del titular o del paciente en los formatos) y, cuando no coincidan, confía en lo que ves (nombres, RFC, fechas, número de póliza).\n` : ""}TEXTO DEL DOCUMENTO (${it.metodo || "lectura"}):
 ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`;
     try {
       const r = await sample.json(prompt, imgs.length ? { modelTier: "default", images: imgs } : { modelTier: "default" });
@@ -550,6 +567,20 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
         cliente = rfcDeOtro ? cliente : ap.cliente; confianza = "Media"; por = rfcDeOtro ? por : ensenado;
       }
     }
+    // Carpeta de origen: si el contenido no contradice, es la clasificación que ya hizo Lau
+    const pc = it.pistaCarpeta;
+    if (pc && enCatalogo(pc.cliente)) {
+      const razon = `carpeta «${it.carpeta.split("/")[0]}»`;
+      const otroPorContenido = top && top.score >= 90 && top.cliente !== pc.cliente;
+      const otroPorClaude = iaCliente && iaCliente !== pc.cliente && ia && ia.confianza === "Alta";
+      if (!it.candidatos.some(c => c.cliente === pc.cliente)) it.candidatos = [{ ...pc, score: 0, razon }, ...it.candidatos];
+      if (otroPorContenido || otroPorClaude) {
+        it.aviso = `La carpeta dice ${pc.cliente}, pero el documento parece de ${otroPorContenido ? top.cliente : iaCliente}`;
+        if (confianza === "Alta") confianza = "Media";
+      } else if (!cliente || cliente === pc.cliente || confianza !== "Alta") {
+        cliente = pc.cliente; confianza = "Alta"; por = cliente === (top && top.cliente) ? `${razon} + ${por || top.razon}` : razon;
+      }
+    }
     // El documento menciona un grupo distinto al del asegurado: no se guarda sin que Lau lo vea
     const carteraCliente = cliente ? estado.carteraDe.get(cliente) : "";
     if (cliente && it.grupoLeido && carteraCliente && carteraCliente !== it.grupoLeido) {
@@ -589,11 +620,21 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
     it.fecha_doc = cfdi ? cfdi.fecha : fechaPorTexto(N);
     it.rfc = cfdi ? cfdi.rfc : ""; it.total = cfdi ? cfdi.total : "";
     const locales = N ? coincidencias(texto) : [];
+    // Pista: la carpeta donde Lau lo tenía (y el nombre del archivo). Solo cuenta si apunta a una sola persona con nombre claro
+    const pistas = it.carpeta ? coincidencias(it.carpeta.split("/").reverse().join(" / ")) : [];
+    it.pistaCarpeta = pistas[0] && pistas[0].score >= 82 && (!pistas[1] || pistas[1].score <= pistas[0].score - 15) ? pistas[0] : null;
+    if (!it.pistaCarpeta && it.carpeta) { const g = grupoEnTexto(normaliza(it.carpeta)); if (g.carpeta) it.grupoCarpeta = g.carpeta; }
     it.aprendido = N ? buscarAprendido(N) : null;
     ({ carpeta: it.grupoLeido, porPoliza: it.grupoPorPoliza } = grupoEnTexto(N));
+    if (!it.grupoLeido && it.grupoCarpeta) it.grupoLeido = it.grupoCarpeta;
     let ia = null;
     // Claude ve también la imagen de la página cuando el OCR no basta: lectura no buena, o el buscador no encontró a nadie claro
-    const verImagen = imagenes.length && /OCR/.test(it.metodo || "") && (it.calidad_lectura !== "buena" || !locales.length || locales[0].score < 90);
+    const sinPersonaClara = !locales.length || locales[0].score < 90;
+    if (!cfdi && sinPersonaClara && !imagenes.length && it._pdf) {   // PDF con texto: el nombre puede estar escrito a mano
+      try { imagenes = await paginasComoImagen(it._pdf, 2); } catch (e) {}
+    }
+    it._pdf = null;
+    const verImagen = imagenes.length && (/OCR/.test(it.metodo || "") ? (it.calidad_lectura !== "buena" || sinPersonaClara) : sinPersonaClara);
     if (!cfdi && (N.length >= 40 || verImagen)) {
       it.etapa = "analizando"; it.avance = 0.8; pintar();
       ia = await preguntarIA(it, texto, locales, verImagen ? imagenes : []);
@@ -634,12 +675,12 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
 
   async function soltar(lista){
     for (const f of Array.from(lista)) {
-      if (!TIPOS_OK.test(f.name)) { toast(`${f.name}: solo PDF, fotos o XML`); continue; }
+      if (!TIPOS_OK.test(f.name)) { if (!f.__carpeta && !/^(desktop\.ini|thumbs\.db)$/i.test(f.name)) toast(`${f.name}: solo PDF, XML, fotos o Word`); continue; }
       if (f.size > 25 * 1024 * 1024) { toast(`${f.name}: pesa más de 25 MB`); continue; }
       const id = await huella(f);
       if (estado.items.has(id)) { toast(`${f.name} ya está en el clasificador`); continue; }
       const previo = estado.historial.find(h => h._id === id && ["enviado", "descargado", "colocado", "descartado"].includes(h.estado));
-      const it = { id, file: f, nombre: f.name, tamano: f.size, etapa: "recibido", avance: 0.05, hora: new Date().toISOString(),
+      const it = { id, file: f, nombre: f.name, carpeta: f.__carpeta || "", tamano: f.size, etapa: "recibido", avance: 0.05, hora: new Date().toISOString(),
         aviso: previo ? `Ya se había ${previo.estado === "descartado" ? "descartado" : previo.estado === "colocado" ? "guardado en OneDrive" : "descargado para OneDrive"} el ${horaCorta(previo.hora_envio || previo.hora)}` : "",
         // Se conserva el envío anterior: volver a soltar el archivo no borra dónde quedó
         anterior: previo ? { estado: previo.estado, lote: previo.lote || null, destino: previo.destino || (previo.anterior && previo.anterior.destino) || null,
@@ -655,7 +696,7 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
     nivel: it.nivel || "asegurado", grupo: it.grupo || "",
     tipo: it.tipo || "Otro", fecha_doc: it.fecha_doc || "", rfc: it.rfc || "", total: it.total || "", confianza: it.confianza || "",
     identificado_por: it.identificado_por || "", candidato_cliente: it.candidato_cliente || null, nombre_leido: it.nombre_leido || "",
-    motivo: it.motivo || "", metodo: it.metodo || "", calidad_lectura: it.calidad_lectura || "", conf_ocr: it.conf_ocr == null ? null : it.conf_ocr, decidido_por: it.decidido_por || "", corregido: !!it.corregido, propuesto: it.propuesto_original || it.sugerido || null, anterior: it.anterior || null,
+    motivo: it.motivo || "", carpeta: it.carpeta || "", metodo: it.metodo || "", calidad_lectura: it.calidad_lectura || "", conf_ocr: it.conf_ocr == null ? null : it.conf_ocr, decidido_por: it.decidido_por || "", corregido: !!it.corregido, propuesto: it.propuesto_original || it.sugerido || null, anterior: it.anterior || null,
     por: estado.uid, hora: it.hora, actualizado: new Date().toISOString() });
   async function guardarEntrada(it, extra){
     if (!db) return;
@@ -976,10 +1017,26 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
   const boca = $("boca");
   ["dragenter", "dragover"].forEach(t => boca.addEventListener(t, (e) => { e.preventDefault(); boca.classList.add("sobre"); }));
   ["dragleave", "drop"].forEach(t => boca.addEventListener(t, (e) => { e.preventDefault(); boca.classList.remove("sobre"); }));
-  boca.addEventListener("drop", (e) => { if (e.dataTransfer && e.dataTransfer.files.length) soltar(e.dataTransfer.files); });
+  // Una carpeta soltada se recorre completa; cada archivo recuerda su ruta (p. ej. «LINO MEZA/Reembolso 3»)
+  async function archivosSoltados(dt){
+    const entradas = [...(dt.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    if (!entradas.some(e => e.isDirectory)) return [...dt.files];
+    const lista = [];
+    const leerDir = (dir) => new Promise((ok) => { const r = dir.createReader(), todo = [];
+      const lote = () => r.readEntries(es => { if (!es.length) return ok(todo); todo.push(...es); lote(); }, () => ok(todo)); lote(); });
+    async function recorrer(e, ruta){
+      if (e.isFile) { const f = await new Promise((ok, mal) => e.file(ok, mal)).catch(() => null); if (f) { f.__carpeta = ruta; lista.push(f); } }
+      else if (e.isDirectory) for (const h of await leerDir(e)) await recorrer(h, ruta ? ruta + "/" + e.name : e.name);
+    }
+    for (const e of entradas) await recorrer(e, "");
+    toast(`${lista.length} archivo(s) de la carpeta`);
+    return lista;
+  }
+  const alSoltar = async (e) => { if (e.dataTransfer && (e.dataTransfer.items || e.dataTransfer.files).length) soltar(await archivosSoltados(e.dataTransfer)); };
+  boca.addEventListener("drop", alSoltar);
   // Soltar en cualquier parte de la página también entra al embudo
   window.addEventListener("dragover", (e) => e.preventDefault());
-  window.addEventListener("drop", (e) => { e.preventDefault(); if (!boca.contains(e.target) && e.dataTransfer && e.dataTransfer.files.length) soltar(e.dataTransfer.files); });
+  window.addEventListener("drop", (e) => { e.preventDefault(); if (!boca.contains(e.target)) alSoltar(e); });
   $("archivos").addEventListener("change", (e) => { soltar(e.target.files); e.target.value = ""; });
   window.addEventListener("beforeunload", (e) => { if ([...estado.items.values()].some(x => x.etapa !== "enviado")) { e.preventDefault(); e.returnValue = ""; } });
 
