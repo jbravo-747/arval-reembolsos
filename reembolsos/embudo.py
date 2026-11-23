@@ -4,13 +4,14 @@ manifiesto.json) a Descargas, y aquí se acomoda en la carpeta Arval sincronizad
   <Grupo>/_Póliza de grupo/<AAAAMMDD>_<TIPO>_<nn>.ext               (documento de la póliza de grupo completa)
   _Por identificar/<nombre original>                                (sin asegurado)
 Nunca sobrescribe ni borra nada en Arval. Cada archivo colocado se anota en Arval/_Embudo/registro.jsonl (solo metadatos).
+Después arma o completa la RELACION DE GASTOS.xlsx de cada asegurado tocado (ver relacion_gastos.py).
 """
 import json
 import zipfile
 from datetime import date, datetime
 from pathlib import Path
 
-from . import destino
+from . import destino, relacion_gastos
 from .catalogo import normalizar
 from .organizacion import TIPO_CORTO, limpiar
 from .puente import POR_IDENTIFICAR, _siguiente_nombre, carpeta_evento
@@ -60,6 +61,7 @@ def colocar_paquete(zip_ruta, arval, hoy=None):
     registro = arval / CARPETA_REGISTRO / "registro.jsonl"
     registro.parent.mkdir(parents=True, exist_ok=True)
     resultados, eventos, reservados = [], {}, set()
+    relaciones = {}   # carpeta del asegurado -> {nombre, datos}: su RELACION DE GASTOS se arma al final
     with zipfile.ZipFile(zip_ruta) as zf:
         m = leer_manifiesto(zf)
         miembros = set(zf.namelist())
@@ -83,6 +85,9 @@ def colocar_paquete(zip_ruta, arval, hoy=None):
                     base = f"{_fecha(a.get('fecha_doc'), f_rec):%Y%m%d}_{TIPO_CORTO.get(a.get('tipo'), 'DOC')}"
                     final = carpeta / _siguiente_nombre(carpeta, base, ext, reservados)
                     r["evento_nuevo"] = nuevo
+                    rel = relaciones.setdefault(cc, {"nombre": a.get("asegurado") or a["cliente"], "datos": []})
+                    if isinstance(a.get("relacion"), dict):
+                        rel["datos"].append(a["relacion"])
                 else:
                     carpeta = arval / POR_IDENTIFICAR
                     final = _libre(carpeta, limpiar(a.get("nombre") or Path(a["archivo"]).name, 150))
@@ -98,4 +103,53 @@ def colocar_paquete(zip_ruta, arval, hoy=None):
     with registro.open("a", encoding="utf-8") as fh:
         for r in resultados:
             fh.write(json.dumps(r, ensure_ascii=False) + "\n")
+    for cc, rel in relaciones.items():
+        actualizar_relacion(arval, cc, rel["nombre"], rel["datos"])
+    reintentar_relaciones(arval)
     return resultados
+
+
+def _anotar(arval, dato):
+    with (Path(arval) / CARPETA_REGISTRO / "registro.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({**dato, "hora": datetime.now().isoformat(timespec="seconds")}, ensure_ascii=False) + "\n")
+
+
+def _nombre_seguro(texto):
+    return "".join(c if c.isalnum() else "_" for c in texto)[:120]
+
+
+def actualizar_relacion(arval, carpeta_cliente, nombre, datos):
+    """Arma o completa la RELACION DE GASTOS del asegurado. Si el Excel está abierto, queda pendiente para reintentar."""
+    arval = Path(arval)
+    rel_carpeta = Path(carpeta_cliente).relative_to(arval).as_posix()
+    try:
+        r = relacion_gastos.actualizar(carpeta_cliente, nombre, list(datos))
+        if r["ruta"]:
+            _anotar(arval, {"relacion": rel_carpeta, "resultado": "actualizada" if r["cambios"] else "sin cambios",
+                            "filas": r["filas"], "respaldo": bool(r["respaldo"])})
+        return True
+    except relacion_gastos.RelacionOcupada:
+        pend = arval / CARPETA_REGISTRO / "relaciones_pendientes"
+        pend.mkdir(parents=True, exist_ok=True)
+        archivo = pend / (_nombre_seguro(rel_carpeta) + ".json")
+        previos = json.loads(archivo.read_text(encoding="utf-8")).get("datos", []) if archivo.exists() else []
+        archivo.write_text(json.dumps({"carpeta": rel_carpeta, "nombre": nombre, "datos": previos + list(datos)}, ensure_ascii=False),
+                           encoding="utf-8")
+        _anotar(arval, {"relacion": rel_carpeta, "resultado": "pendiente (archivo abierto)"})
+    except Exception as e:   # noqa: BLE001 — la relación nunca debe impedir acomodar los documentos
+        _anotar(arval, {"relacion": rel_carpeta, "resultado": "error", "detalle": f"{type(e).__name__}: {e}"[:200]})
+    return False
+
+
+def reintentar_relaciones(arval):
+    """Reintenta las relaciones que quedaron pendientes porque el Excel estaba abierto."""
+    pend = Path(arval) / CARPETA_REGISTRO / "relaciones_pendientes"
+    if not pend.exists():
+        return
+    for archivo in sorted(pend.glob("*.json")):
+        try:
+            p = json.loads(archivo.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        archivo.unlink()
+        actualizar_relacion(arval, Path(arval) / p["carpeta"], p["nombre"], p.get("datos", []))

@@ -422,6 +422,30 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     }));
     return scriptsCargados.get(url);
   }
+  // Como Lau escribe el concepto en su relación de gastos (igual que reembolsos/relacion_gastos.py)
+  function conceptoRelacion(emisor, honorarios){
+    if (honorarios) return "FACTURA HONORARIOS MEDICOS";
+    let e = normaliza(String(emisor || "").replace(/[,.]/g, " "));
+    e = e.replace(/\b(S ?A ?B?|S DE R ?L|S ?C|S ?A ?P ?I|A ?C)( DE C ?V)?\s*$/, "").replace(/\bDE C ?V\b|\bSA DE CV\b/g, "").replace(/\s+/g, " ").trim();
+    return e ? `FACTURA ${e}` : "FACTURA";
+  }
+  // Solo folios, fechas, montos y estatus; nada clínico. Limita tamaño y tipos de lo que viene de Claude.
+  function relacionLimpia(r, tipoDoc){
+    if (!r || typeof r !== "object") return null;
+    const txt = (v, n = 40) => (v == null || v === "" ? null : String(v).trim().slice(0, n));
+    const num = (v) => { const x = Number(String(v ?? "").replace(/[^\d.-]/g, "")); return isFinite(x) && String(v ?? "").trim() !== "" ? Math.round(x * 100) / 100 : null; };
+    const fecha = (v) => /^20\d{2}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : null;
+    const facturas = (Array.isArray(r.facturas) ? r.facturas : []).slice(0, 40)
+      .map(f => ({ factura: txt(f && f.factura, 30), monto: num(f && f.monto), pagado: num(f && f.pagado), estatus: txt(f && f.estatus, 20) }))
+      .filter(f => f.factura || f.monto != null);
+    if (/FACTURA|CFDI|HONORARIOS/i.test(tipoDoc || "") && !facturas.length && (r.factura || r.monto != null))
+      return { tipo: "factura", factura: txt(r.factura, 30), fecha: fecha(r.fecha), monto: num(r.monto), concepto: conceptoRelacion(r.emisor, r.honorarios === true) };
+    if (/Finiquito|Comprobante de pago/i.test(tipoDoc || "") && (facturas.length || r.folio))
+      return { tipo: "finiquito", folio: txt(r.folio), fecha: fecha(r.fecha), reclamacion: txt(r.reclamacion), estatus: txt(r.estatus, 20), facturas };
+    if (tipoDoc === "Formato de reclamación" && facturas.length)
+      return { tipo: "solicitud", reclamacion: txt(r.reclamacion), fecha: fecha(r.fecha), facturas };
+    return null;
+  }
   function leerCfdi(texto){
     const x = new DOMParser().parseFromString(texto, "application/xml");
     const comp = x.documentElement;
@@ -431,7 +455,11 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     const at = (el, n) => el ? (el.getAttribute(n) || "") : "";
     const tc = at(comp, "TipoDeComprobante");
     const tipo = tc === "I" ? (at(em, "RegimenFiscal") === "612" ? "CFDI recibo de honorarios" : "CFDI factura") : "CFDI otro";
-    return { tipo, fecha: at(comp, "Fecha").slice(0, 10), total: at(comp, "Total"), receptor: at(re, "Nombre"), rfc: at(re, "Rfc"), emisor: at(em, "Nombre") };
+    const tfd = uno("TimbreFiscalDigital");
+    const folioCfdi = `${at(comp, "Serie")} ${at(comp, "Folio")}`.trim() || at(tfd, "UUID").slice(-8).toUpperCase();
+    const relacionCfdi = tc === "I" ? { tipo: "factura", factura: folioCfdi, fecha: at(comp, "Fecha").slice(0, 10), monto: Number(at(comp, "Total")) || null,
+      concepto: conceptoRelacion(at(em, "Nombre"), ["612", "625"].includes(at(em, "RegimenFiscal"))) } : null;
+    return { relacion: relacionCfdi, tipo, fecha: at(comp, "Fecha").slice(0, 10), total: at(comp, "Total"), receptor: at(re, "Nombre"), rfc: at(re, "Rfc"), emisor: at(em, "Nombre") };
   }
   const MAX_PAGINAS = 15;
   // Lee TODAS las páginas (hasta 15): las que traen texto se leen directo y las que son imagen, con OCR a ~300 dpi.
@@ -534,6 +562,10 @@ Responde SOLO un objeto JSON con estas claves:
 - "rfc": RFC del asegurado o receptor si aparece, o null.
 - "total": importe total si es factura o recibo (número), o null.
 - "confianza": "Alta" (nombre completo o RFC del cliente en el documento), "Media" (nombre de un relacionado del candidato o nombre casi completo), "Baja" (coincidencia parcial o dudosa) o "Ninguna".
+- "relacion": SOLO para facturas, solicitudes o formatos de reembolso y finiquitos; si no, null. Sin diagnósticos ni descripciones. Forma:
+  · factura en PDF: {"factura": serie y folio de la factura, "emisor": nombre del emisor, "honorarios": true si es de un médico (honorarios), "fecha": AAAA-MM-DD, "monto": total}
+  · solicitud o formato de reembolso: {"reclamacion": número de reclamación o siniestro si aparece, "fecha": fecha de la solicitud AAAA-MM-DD, "facturas": [{"factura", "monto"}] listadas}
+  · finiquito o carta de pago: {"folio": folio del finiquito, "fecha": AAAA-MM-DD, "reclamacion": número de reclamación, "estatus": PAGADA, PAGO PARCIAL o RECHAZADA, "facturas": [{"factura", "monto": reclamado, "pagado": monto pagado, "estatus"}]}
 - "motivo": una frase corta de por qué, SIN diagnósticos, medicamentos, padecimientos ni montos, y SIN nombres de personas (di "el paciente", "el receptor", "un dependiente").
 No inventes. Si dudas entre dos clientes, usa confianza "Baja".
 
@@ -651,6 +683,7 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
     it.tipo = cfdi ? cfdi.tipo : tipoPorTexto(N) || "Otro";
     it.fecha_doc = cfdi ? cfdi.fecha : fechaPorTexto(N);
     it.rfc = cfdi ? cfdi.rfc : ""; it.total = cfdi ? cfdi.total : "";
+    it.relacion = cfdi ? cfdi.relacion : null;
     const locales = N ? coincidencias(texto) : [];
     // Pista: la carpeta donde Lau lo tenía (y el nombre del archivo). Solo cuenta si apunta a una sola persona con nombre claro
     const pistas = it.carpeta ? coincidencias(it.carpeta.split("/").reverse().join(" / ")) : [];
@@ -678,6 +711,7 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
         if (/^20\d{2}-\d{2}-\d{2}$/.test(ia.fecha_doc || "")) it.fecha_doc = ia.fecha_doc;
         if (ia.rfc) it.rfc = String(ia.rfc).toUpperCase().replace(/[^A-Z0-9&Ñ]/g, "");
         if (ia.total != null && ia.total !== "") it.total = String(ia.total);
+        if (!it.relacion) it.relacion = relacionLimpia(ia.relacion, it.tipo);
       }
     }
     // Lo que Claude leyó (p. ej. el nombre escrito a mano) se busca también en la base: respalda o corrige su propuesta
@@ -875,7 +909,8 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
         manifiesto.archivos.push({ id: it.id, archivo: ruta, nombre: it.nombre, cliente: it.cliente || null, nivel: it.nivel || "asegurado", grupo: it.grupo || "",
           cartera: it.nivel === "grupo" ? it.grupo : it.cliente ? (estado.carteraDe.get(it.cliente) || "") : "",
           tipo: it.tipo || "Otro", fecha_doc: it.fecha_doc || "", fecha_recepcion: fechaLocal(it.hora), confianza: it.confianza || "", decidido_por: it.decidido_por || "",
-          candidato_cliente: it.candidato_cliente || null });
+          candidato_cliente: it.candidato_cliente || null,
+          relacion: it.cliente && it.nivel !== "grupo" ? (it.relacion || null) : null });
       });
       zip.file("manifiesto.json", JSON.stringify(manifiesto, null, 1));
       const data = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });

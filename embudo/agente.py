@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # reembolsos/ cuando corre desde el repositorio
 from reembolsos import destino  # noqa: E402
-from reembolsos.embudo import CARPETA_REGISTRO, PATRON_PAQUETE, colocar_paquete  # noqa: E402
+from reembolsos.embudo import CARPETA_REGISTRO, PATRON_PAQUETE, colocar_paquete, reintentar_relaciones  # noqa: E402
 
 APP = "ArvalClasificador"
 APP_ANTERIOR = "ArvalEmbudo"   # nombre de la primera versión
@@ -338,6 +338,8 @@ def vigilar(una_vez=False):
                     procesar(p, cfg)
             if time.time() - ultimo_aseo > 3600:
                 limpiar_procesados(cfg); ultimo_aseo = time.time()
+            if not sin_marca:
+                reintentar_relaciones(cfg["arval"])   # relaciones que no se pudieron escribir porque estaban abiertas
         except Exception as e:  # noqa: BLE001 — el vigilante no debe caerse
             log(f"error: {type(e).__name__}: {e}")
         if una_vez:

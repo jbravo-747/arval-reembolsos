@@ -18,6 +18,7 @@
                                          lleva lo nuevo que dejó Power Automate a la estructura estándar de /Arval
   python cli.py asegurados               base de asegurados y expedientes (Excel) a partir del análisis de organizar
   python cli.py cargar-asegurados [--excel X] [--semilla-sin-revisar]
+  python cli.py relacion <carpeta del asegurado> [...]   arma o completa su RELACION DE GASTOS.xlsx con sus facturas XML
                                          catálogo (hoja Clientes con Cartera y RFC) y buscador del panel desde la base revisada
   python cli.py latido <rutina> <resultado> [detalle]
   python cli.py decisiones-locales       (respaldo) OCR de Windows en lugar del agente; solo en un equipo Windows
@@ -697,7 +698,7 @@ def decisiones_locales(cfg):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("comando", choices=["selftest", "pull", "apply", "resumen", "borradores", "ingresar", "indexar", "organizar", "semilla", "puente", "asegurados", "cargar-asegurados",
-                                       "latido", "decisiones-locales"])
+                                       "latido", "decisiones-locales", "relacion"])
     p.add_argument("args", nargs="*")
     p.add_argument("--modo", choices=["propone", "aplica"])
     p.add_argument("--todos", action="store_true")
@@ -713,7 +714,7 @@ def main():
     p.add_argument("--sin-ocr", action="store_true", help="organizar: no pasa OCR a escaneos ni fotos (más rápido)")
     p.add_argument("--solo-carpetas", action="store_true", help="semilla: crea las carpetas sin copiar archivos")
     a = p.parse_args()
-    cfg = cargar(credenciales=a.comando not in ("organizar", "semilla", "puente", "asegurados", "cargar-asegurados"))
+    cfg = cargar(credenciales=a.comando not in ("organizar", "semilla", "puente", "asegurados", "cargar-asegurados", "relacion"))
     if a.modo:
         cfg = cfg.__class__(**{**cfg.__dict__, "modo": a.modo})
     cfg.trabajo.mkdir(parents=True, exist_ok=True)
@@ -755,6 +756,14 @@ def main():
         latido(cfg, a.args[0], a.args[1], " ".join(a.args[2:]))
     elif a.comando == "decisiones-locales":
         decisiones_locales(cfg)
+    elif a.comando == "relacion":
+        if not a.args:
+            sys.exit("uso: relacion <carpeta del asegurado> [<otra carpeta> ...]")
+        from reembolsos import relacion_gastos
+        for carpeta in a.args:
+            r = relacion_gastos.actualizar(carpeta, Path(carpeta).name, [])
+            print(f"{Path(carpeta).name}: " + (f"{r['filas']} factura(s), {r['cambios']} cambio(s)" + (" · respaldo de la relación anterior" if r["respaldo"] else "")
+                                               if r["ruta"] else "sin facturas XML; no se creó relación"))
 
 
 if __name__ == "__main__":

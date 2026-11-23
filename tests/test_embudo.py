@@ -71,3 +71,26 @@ def test_documento_de_poliza_de_grupo_va_a_su_carpeta_y_no_cuenta_como_asegurado
     from reembolsos.puente import catalogo_destino, expedientes_destino
     assert [c.nombre for c in catalogo_destino(arval).clientes] == ["ANA RUIZ"]
     assert [e["cliente"] for e in expedientes_destino(arval, hoy=date(2026, 11, 12))] == ["ANA RUIZ"]
+
+
+def test_arma_la_relacion_de_gastos_del_asegurado(tmp_path):
+    from reembolsos import relacion_gastos as rg
+    arval = tmp_path / "Arval"
+    (arval / MARCA).mkdir(parents=True)
+    zip_ruta = _paquete(tmp_path, [
+        {"nombre": "factura.pdf", "cliente": "ROSA EJEMPLO GARZA", "cartera": "SAYER CLIENTES", "tipo": "Factura PDF", "fecha_doc": "2026-10-02",
+         "relacion": {"tipo": "factura", "factura": "B 55", "fecha": "2026-10-02", "monto": 950.0, "concepto": "FACTURA LABORATORIO EJEMPLO"}},
+        {"nombre": "finiquito.pdf", "cliente": "ROSA EJEMPLO GARZA", "cartera": "SAYER CLIENTES", "tipo": "Finiquito o dictamen",
+         "relacion": {"tipo": "finiquito", "folio": "SIGEJ1", "fecha": "2026-10-25", "reclamacion": "2026XX9", "estatus": "PAGADA",
+                      "facturas": [{"factura": "B55", "pagado": 900}]}},
+        {"nombre": "receta.jpg", "cliente": "ROSA EJEMPLO GARZA", "cartera": "SAYER CLIENTES", "tipo": "Receta"},
+    ])
+    r = colocar_paquete(zip_ruta, arval, hoy=date(2026, 10, 30))
+    assert all(x["resultado"] == "colocado" for x in r)
+    ruta = arval / "SAYER CLIENTES" / "ROSA EJEMPLO GARZA" / rg.NOMBRE_ARCHIVO
+    _, filas, nuestra = rg.leer(ruta)
+    assert nuestra and len(filas) == 1
+    f = filas[0]
+    assert f["MONTO"] == 950 and f["MONTO PAGADO"] == 900 and f["FOLIO"] == "SIGEJ1" and f["ESTATUS"] == "PAGADA"
+    registro = (arval / "_Embudo" / "registro.jsonl").read_text(encoding="utf-8")
+    assert '"relacion": "SAYER CLIENTES/ROSA EJEMPLO GARZA"' in registro
