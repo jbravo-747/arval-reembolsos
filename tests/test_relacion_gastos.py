@@ -10,13 +10,14 @@ CFDI = """<?xml version="1.0" encoding="UTF-8"?>
   Serie="{serie}" Folio="{folio}" Fecha="{fecha}T10:00:00" Total="{total}" TipoDeComprobante="I">
   <cfdi:Emisor Rfc="XAXX010101000" Nombre="{emisor}" RegimenFiscal="{regimen}"/>
   <cfdi:Receptor Rfc="EJRO800101AAA" Nombre="ROSA EJEMPLO GARZA"/>
+  <cfdi:Conceptos><cfdi:Concepto Descripcion="{desc}"/><cfdi:Concepto Descripcion="SERVICIO DE EJEMPLO"/></cfdi:Conceptos>
   <cfdi:Complemento><tfd:TimbreFiscalDigital UUID="{uuid}"/></cfdi:Complemento>
 </cfdi:Comprobante>"""
 
 
 def _xml(carpeta, nombre, **kw):
     datos = dict(serie="A", folio="100", fecha="2026-10-01", total="1500.00", emisor="FARMACIA EJEMPLO SA DE CV", regimen="601",
-                 uuid="11111111-2222-3333-4444-555555555555")
+                 uuid="11111111-2222-3333-4444-555555555555", desc="PRODUCTO DE EJEMPLO")
     datos.update(kw)
     (carpeta / nombre).write_text(CFDI.format(**datos), encoding="utf-8")
 
@@ -30,6 +31,7 @@ def _relacion_de_lau(ruta):
     ws.cell(3, 2, "DATO CLINICO DE LAU")          # padecimiento
     ws.cell(3, 3, "2026XX0001")                   # reclamación
     ws.cell(3, 4, "FACTURA FARMACIA EJEMPLO")     # concepto
+    ws.cell(3, 5, "DESCRIPCION DE LAU")           # descripción
     ws.cell(3, 6, "A 100")                        # factura
     ws.cell(3, 8, 1400)                           # monto distinto al del CFDI
     wb.save(ruta)
@@ -59,7 +61,8 @@ def test_arma_relacion_nueva_desde_xml_solicitud_y_finiquito(tmp_path):
     f1 = next(f for f in filas if rg.clave_factura(f["FACTURA"]) == "A100")
     assert f1["MONTO"] == 1500 and f1["MONTO PAGADO"] == 1200 and f1["ESTATUS"] == "PAGADA" and f1["FOLIO"] == "SIGEJ000123"
     assert f1["RECLAMACION"] == "2026XX0001" and f1["FECHA DE INGRESO"] == date(2026, 10, 9) and f1["FECHA DE FINIQUITO"] == date(2026, 10, 20)
-    assert f1["CONCEPTO"] == "FACTURA FARMACIA EJEMPLO" and f1["PADECIMIENTO"] is None and f1["DESCRIPCION"] is None
+    assert f1["CONCEPTO"] == "FACTURA FARMACIA EJEMPLO" and f1["PADECIMIENTO"] is None
+    assert f1["DESCRIPCION"] == "PRODUCTO DE EJEMPLO; SERVICIO DE EJEMPLO"
     f2 = next(f for f in filas if rg.clave_factura(f["FACTURA"]) == "777")
     assert f2["CONCEPTO"] == "FACTURA HONORARIOS MEDICOS"
     ws = openpyxl.load_workbook(r["ruta"]).worksheets[0]
@@ -78,6 +81,9 @@ def test_respeta_y_respalda_la_relacion_de_lau(tmp_path):
     assert nuestra and len(filas) == 2
     f1 = next(f for f in filas if rg.clave_factura(f["FACTURA"]) == "A100")
     assert f1["PADECIMIENTO"] == "DATO CLINICO DE LAU" and f1["MONTO"] == 1400   # no pisa lo de Lau
+    assert f1["DESCRIPCION"] == "DESCRIPCION DE LAU"
+    f3 = next(f for f in filas if rg.clave_factura(f["FACTURA"]) == "A300")
+    assert f3["DESCRIPCION"] == "PRODUCTO DE EJEMPLO; SERVICIO DE EJEMPLO"
     assert "Revisar monto" in (f1["OBSERVACIONES"] or "")
     # Una segunda pasada sin documentos nuevos no cambia nada ni duplica notas
     r2 = rg.actualizar(cliente, "ROSA EJEMPLO GARZA", [])
@@ -105,3 +111,8 @@ def test_el_folio_de_la_factura_manda_aunque_llegue_despues(tmp_path):
     r = rg.actualizar(cliente, "ROSA EJEMPLO GARZA", [{"tipo": "finiquito", "folio": "S1", "facturas": [{"factura": "A100", "pagado": 10}]}])
     _, filas, _ = rg.leer(r["ruta"])
     assert len(filas) == 1 and filas[0]["FACTURA"] == "A 100" and filas[0]["MONTO PAGADO"] == 10
+
+
+def test_descripcion_larga_se_recorta():
+    d = rg.descripcion(["X" * 200, "Y" * 200])
+    assert len(d) <= 250 and d.endswith("…")

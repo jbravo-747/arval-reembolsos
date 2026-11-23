@@ -439,7 +439,8 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
       .map(f => ({ factura: txt(f && f.factura, 30), monto: num(f && f.monto), pagado: num(f && f.pagado), estatus: txt(f && f.estatus, 20) }))
       .filter(f => f.factura || f.monto != null);
     if (/FACTURA|CFDI|HONORARIOS/i.test(tipoDoc || "") && !facturas.length && (r.factura || r.monto != null))
-      return { tipo: "factura", factura: txt(r.factura, 30), fecha: fecha(r.fecha), monto: num(r.monto), concepto: conceptoRelacion(r.emisor, r.honorarios === true) };
+      return { tipo: "factura", factura: txt(r.factura, 30), fecha: fecha(r.fecha), monto: num(r.monto), concepto: conceptoRelacion(r.emisor, r.honorarios === true),
+        descripcion: txt(Array.isArray(r.descripcion) ? r.descripcion.join("; ") : r.descripcion, 250) };
     if (/Finiquito|Comprobante de pago/i.test(tipoDoc || "") && (facturas.length || r.folio))
       return { tipo: "finiquito", folio: txt(r.folio), fecha: fecha(r.fecha), reclamacion: txt(r.reclamacion), estatus: txt(r.estatus, 20), facturas };
     if (tipoDoc === "Formato de reclamación" && facturas.length)
@@ -457,7 +458,9 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     const tipo = tc === "I" ? (at(em, "RegimenFiscal") === "612" ? "CFDI recibo de honorarios" : "CFDI factura") : "CFDI otro";
     const tfd = uno("TimbreFiscalDigital");
     const folioCfdi = `${at(comp, "Serie")} ${at(comp, "Folio")}`.trim() || at(tfd, "UUID").slice(-8).toUpperCase();
+    const conceptosCfdi = [...new Set([...x.getElementsByTagNameNS("*", "Concepto")].map(c => (c.getAttribute("Descripcion") || "").replace(/\s+/g, " ").trim()).filter(Boolean))];
     const relacionCfdi = tc === "I" ? { tipo: "factura", factura: folioCfdi, fecha: at(comp, "Fecha").slice(0, 10), monto: Number(at(comp, "Total")) || null,
+      descripcion: conceptosCfdi.join("; ").slice(0, 250) || null,
       concepto: conceptoRelacion(at(em, "Nombre"), ["612", "625"].includes(at(em, "RegimenFiscal"))) } : null;
     return { relacion: relacionCfdi, tipo, fecha: at(comp, "Fecha").slice(0, 10), total: at(comp, "Total"), receptor: at(re, "Nombre"), rfc: at(re, "Rfc"), emisor: at(em, "Nombre") };
   }
@@ -562,8 +565,8 @@ Responde SOLO un objeto JSON con estas claves:
 - "rfc": RFC del asegurado o receptor si aparece, o null.
 - "total": importe total si es factura o recibo (número), o null.
 - "confianza": "Alta" (nombre completo o RFC del cliente en el documento), "Media" (nombre de un relacionado del candidato o nombre casi completo), "Baja" (coincidencia parcial o dudosa) o "Ninguna".
-- "relacion": SOLO para facturas, solicitudes o formatos de reembolso y finiquitos; si no, null. Sin diagnósticos ni descripciones. Forma:
-  · factura en PDF: {"factura": serie y folio de la factura, "emisor": nombre del emisor, "honorarios": true si es de un médico (honorarios), "fecha": AAAA-MM-DD, "monto": total}
+- "relacion": SOLO para facturas, solicitudes o formatos de reembolso y finiquitos; si no, null. Sin diagnósticos. Forma:
+  · factura en PDF: {"factura": serie y folio de la factura, "emisor": nombre del emisor, "honorarios": true si es de un médico (honorarios), "fecha": AAAA-MM-DD, "monto": total, "descripcion": la descripción de los conceptos facturados tal como aparece en la factura, separados por "; " (máximo 250 caracteres)}
   · solicitud o formato de reembolso: {"reclamacion": número de reclamación o siniestro si aparece, "fecha": fecha de la solicitud AAAA-MM-DD, "facturas": [{"factura", "monto"}] listadas}
   · finiquito o carta de pago: {"folio": folio del finiquito, "fecha": AAAA-MM-DD, "reclamacion": número de reclamación, "estatus": PAGADA, PAGO PARCIAL o RECHAZADA, "facturas": [{"factura", "monto": reclamado, "pagado": monto pagado, "estatus"}]}
 - "motivo": una frase corta de por qué, SIN diagnósticos, medicamentos, padecimientos ni montos, y SIN nombres de personas (di "el paciente", "el receptor", "un dependiente").

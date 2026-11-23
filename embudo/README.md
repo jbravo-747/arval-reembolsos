@@ -42,7 +42,8 @@ Al acomodar documentos de un asegurado, el agente arma o completa `<Cartera>/<As
 (`reembolsos/relacion_gastos.py`) con el formato que Lau llevaba a mano: una fila por factura con reclamación, concepto,
 factura, fecha, monto, fecha de ingreso, folio y fecha del finiquito, estatus y lo pagado. Fuentes: los CFDI XML de la carpeta
 (los lee el agente) y el campo `relacion` del manifiesto (lo que el clasificador leyó con Claude de facturas PDF, solicitudes y
-finiquitos: solo folios, fechas, montos y estatus). PADECIMIENTO y DESCRIPCION nunca se llenan. Nunca pisa una celda con
+finiquitos: folios, fechas, montos, estatus y la descripción de los conceptos de cada factura, que solo se escribe en la
+relación del expediente y no se guarda en el historial ni en el registro). PADECIMIENTO nunca se llena. Nunca pisa una celda con
 valor (las diferencias van a OBSERVACIONES); una relación hecha a mano se copia antes a `_Respaldo relación`; si el Excel
 está abierto queda en `_Embudo/relaciones_pendientes` y se reintenta. Para una carpeta que ya existe:
 `python cli.py relacion "<carpeta del asegurado>"` (solo con sus XML). El agente se compila con `--hidden-import openpyxl`.

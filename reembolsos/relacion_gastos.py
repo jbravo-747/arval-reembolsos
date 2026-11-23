@@ -5,10 +5,11 @@ Fila 1: nombre del asegurado (B1:O1). Fila 2: encabezados. Una fila por factura:
   FOLIO · ESTATUS · FECHA DE FINIQUITO · MONTO PAGADO · MONTO NO PAGADO · OBSERVACIONES
 
 Fuentes (solo metadatos, nada clínico):
-  - factura:   CFDI XML (lo lee este módulo) o datos que el clasificador leyó de la factura en PDF
+  - factura:   CFDI XML (lo lee este módulo) o datos que el clasificador leyó de la factura en PDF; incluye la descripción
+               de los conceptos facturados (columna DESCRIPCION), que solo se escribe aquí, en el expediente del asegurado
   - solicitud: número de reclamación, fecha de ingreso y facturas incluidas
   - finiquito: folio, fecha, reclamación, estatus y lo pagado por factura
-PADECIMIENTO y DESCRIPCION nunca se llenan desde los documentos: son datos clínicos y quedan para Lau.
+PADECIMIENTO nunca se llena desde los documentos: es dato clínico y queda para Lau.
 
 Reglas: nunca pisa una celda que ya tiene valor (si el documento dice otra cosa lo anota en OBSERVACIONES); si la relación
 existente no la hizo el programa, guarda antes una copia en «_Respaldo relación»; si el archivo está abierto (bloqueado),
@@ -28,7 +29,7 @@ COLUMNAS = ["PADECIMIENTO", "RECLAMACION", "CONCEPTO", "DESCRIPCION", "FACTURA",
             "FECHA DE INGRESO", "FOLIO", "ESTATUS", "FECHA DE FINIQUITO", "MONTO PAGADO", "MONTO NO PAGADO", "OBSERVACIONES"]
 FECHAS = {"FECHA DE DOCUMENTO", "FECHA DE INGRESO", "FECHA DE FINIQUITO"}
 MONTOS = {"MONTO", "MONTO PAGADO", "MONTO NO PAGADO"}
-CLINICAS = {"PADECIMIENTO", "DESCRIPCION"}
+CLINICAS = {"PADECIMIENTO"}
 FORMATO_MONEDA = '_-"$"* #,##0.00_-;\\-"$"* #,##0.00_-;_-"$"* "-"??_-;_-@_-'
 REGIMEN_HONORARIOS = {"612", "625"}   # personas físicas con actividad profesional
 
@@ -122,11 +123,25 @@ def leer_cfdi(ruta):
         return next((e for e in raiz.iter() if e.tag.endswith("}" + nombre) or e.tag == nombre), None)
     em, rec, tfd = uno("Emisor"), uno("Receptor"), uno("TimbreFiscalDigital")
     serie, folio = (raiz.get("Serie") or "").strip(), (raiz.get("Folio") or "").strip()
+    conceptos = []
+    for e in raiz.iter():
+        if (e.tag.endswith("}Concepto") or e.tag == "Concepto") and (e.get("Descripcion") or "").strip():
+            d = re.sub(r"\s+", " ", e.get("Descripcion")).strip()
+            if d not in conceptos:
+                conceptos.append(d)
     uuid = (tfd.get("UUID") if tfd is not None else "") or ""
     factura = f"{serie} {folio}".strip() or uuid[-8:].upper()
     return {"tipo": "factura", "factura": factura, "fecha": (raiz.get("Fecha") or "")[:10], "monto": a_monto(raiz.get("Total")),
             "concepto": concepto(em.get("Nombre") if em is not None else "", (em.get("RegimenFiscal") if em is not None else "") in REGIMEN_HONORARIOS),
-            "uuid": uuid.upper(), "rfc_receptor": (rec.get("Rfc") if rec is not None else "") or ""}
+            "descripcion": descripcion(conceptos), "uuid": uuid.upper(), "rfc_receptor": (rec.get("Rfc") if rec is not None else "") or ""}
+
+
+def descripcion(conceptos, largo=250):
+    """Conceptos de la factura en una celda: «CONSULTA MEDICA; MEDICAMENTO X» (sin repetir, con tope de largo)."""
+    if isinstance(conceptos, str):
+        conceptos = [conceptos]
+    texto = "; ".join(c.strip() for c in conceptos if c and str(c).strip())
+    return texto if len(texto) <= largo else texto[:largo - 1].rstrip("; ") + "…"
 
 
 def escanear_xml(carpeta):
@@ -317,7 +332,8 @@ def combinar(filas, datos):
             f = fila_de(d.get("factura"), d.get("monto"), d.get("fecha"))
             if f is None:
                 continue
-            for col, k in (("FACTURA", "factura"), ("FECHA DE DOCUMENTO", "fecha"), ("MONTO", "monto"), ("CONCEPTO", "concepto")):
+            for col, k in (("FACTURA", "factura"), ("FECHA DE DOCUMENTO", "fecha"), ("MONTO", "monto"), ("CONCEPTO", "concepto"),
+                           ("DESCRIPCION", "descripcion")):
                 cambios += _poner(f, col, d.get(k))
         elif tipo in ("finiquito", "solicitud"):
             for x in d.get("facturas") or []:
