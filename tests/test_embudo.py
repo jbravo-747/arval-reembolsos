@@ -45,7 +45,10 @@ def test_cliente_nuevo_abre_evento_y_no_sobrescribe(tmp_path):
     (arval / MARCA).mkdir(parents=True)
     datos = {"nombre": "a.pdf", "cliente": "ANA RUIZ", "cartera": "SAYER CLIENTES", "tipo": "Receta", "fecha_doc": "2026-10-29"}
     colocar_paquete(_paquete(tmp_path, [datos]), arval)
-    r = colocar_paquete(_paquete(tmp_path, [datos]), arval, hoy=date(2026, 10, 30))
+    otro = _paquete(tmp_path, [datos])   # mismo nombre y fecha, contenido distinto: se numera, nunca sobrescribe
+    with zipfile.ZipFile(otro, "a") as zf:
+        zf.writestr("archivos/001_a.pdf", b"otra receta distinta")
+    r = colocar_paquete(otro, arval, hoy=date(2026, 10, 30))
     assert r[0]["destino"] == "SAYER CLIENTES/ANA RUIZ/2026-10_Expediente 20261030/20261029_RECETA_02.pdf"
 
 
@@ -94,3 +97,15 @@ def test_arma_la_relacion_de_gastos_del_asegurado(tmp_path):
     assert f["MONTO"] == 950 and f["MONTO PAGADO"] == 900 and f["FOLIO"] == "SIGEJ1" and f["ESTATUS"] == "PAGADA"
     registro = (arval / "_Embudo" / "registro.jsonl").read_text(encoding="utf-8")
     assert '"relacion": "SAYER CLIENTES/ROSA EJEMPLO GARZA"' in registro
+
+
+def test_volver_a_guardar_lo_mismo_no_duplica(tmp_path):
+    arval = tmp_path / "Arval"
+    (arval / MARCA).mkdir(parents=True)
+    docs = [{"nombre": "estudio.pdf", "cliente": "ROSA EJEMPLO GARZA", "cartera": "SAYER CLIENTES", "tipo": "Estudio o resultado", "fecha_doc": "2026-10-02"},
+            {"nombre": "foto.jpg", "cliente": None, "tipo": "Otro"}]
+    primero = colocar_paquete(_paquete(tmp_path, docs), arval, hoy=date(2026, 10, 30))
+    segundo = colocar_paquete(_paquete(tmp_path, docs), arval, hoy=date(2026, 10, 31))
+    assert [x["destino"] for x in segundo] == [x["destino"] for x in primero]
+    assert all(x.get("duplicado") and x["resultado"] == "colocado" for x in segundo)
+    assert len([p for p in arval.rglob("*") if p.is_file() and "_Embudo" not in p.parts and MARCA not in p.parts]) == 2

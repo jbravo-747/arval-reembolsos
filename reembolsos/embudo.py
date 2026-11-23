@@ -6,6 +6,7 @@ manifiesto.json) a Descargas, y aquí se acomoda en la carpeta Arval sincronizad
 Nunca sobrescribe ni borra nada en Arval. Cada archivo colocado se anota en Arval/_Embudo/registro.jsonl (solo metadatos).
 Después arma o completa la RELACION DE GASTOS.xlsx de cada asegurado tocado (ver relacion_gastos.py).
 """
+import hashlib
 import json
 import zipfile
 from datetime import date, datetime
@@ -54,6 +55,23 @@ def leer_manifiesto(zf):
     return m
 
 
+def _ya_esta(raiz, datos):
+    """Ruta de un archivo idéntico (mismo contenido) dentro de raiz, o None. Compara primero el tamaño: es barato."""
+    raiz = Path(raiz)
+    if not raiz.is_dir():
+        return None
+    huella = None
+    for p in raiz.rglob("*"):
+        try:
+            if p.is_file() and p.stat().st_size == len(datos):
+                huella = huella or hashlib.sha256(datos).digest()
+                if hashlib.sha256(p.read_bytes()).digest() == huella:
+                    return p
+        except OSError:
+            continue
+    return None
+
+
 def colocar_paquete(zip_ruta, arval, hoy=None):
     """Acomoda cada archivo del paquete en Arval. Devuelve [{id, nombre, resultado, destino}] (resultado: colocado | error)."""
     arval, hoy = Path(arval), hoy or date.today()
@@ -91,10 +109,18 @@ def colocar_paquete(zip_ruta, arval, hoy=None):
                 else:
                     carpeta = arval / POR_IDENTIFICAR
                     final = _libre(carpeta, limpiar(a.get("nombre") or Path(a["archivo"]).name, 150))
+                datos = zf.read(a["archivo"])
+                # El mismo archivo ya guardado antes (se volvió a soltar): no se duplica, se reporta dónde está
+                raiz_busqueda = carpeta.parent if a.get("cliente") and a.get("nivel") != "grupo" else carpeta
+                previo = _ya_esta(raiz_busqueda, datos)
+                if previo:
+                    r.update(resultado="colocado", duplicado=True, destino=previo.relative_to(arval).as_posix())
+                    r["hora"] = datetime.now().isoformat(timespec="seconds")
+                    resultados.append(r)
+                    continue
                 final.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(a["archivo"]) as src, open(final, "xb") as dst:   # "x": nunca sobrescribe
-                    while bloque := src.read(1 << 20):
-                        dst.write(bloque)
+                with open(final, "xb") as dst:   # "x": nunca sobrescribe
+                    dst.write(datos)
                 r.update(resultado="colocado", destino=final.relative_to(arval).as_posix())
             except (OSError, ValueError, KeyError) as e:
                 r.update(resultado="error", detalle=f"{type(e).__name__}: {e}"[:200])
