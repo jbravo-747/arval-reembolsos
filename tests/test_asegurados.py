@@ -122,3 +122,21 @@ def test_relaciones_de_lau_se_leen_sin_datos_clinicos_y_se_corroboran(tmp_path):
     juan = [a for a in h["asegurados"] if a["Cliente"] == "JUAN PEREZ LOPEZ"][0]
     assert juan["Facturas en relación"] == 2 and juan["Confirmadas con documento"] == 2 and juan["Monto reclamado"] == 2200.0
     assert h["expedientes"][0]["Reclamación (Lau)"] == "R-1" and list(juan)[-1] == "Notas de Lau"
+
+
+def test_frases_de_formulario_no_son_personas():
+    from reembolsos.asegurados import es_nombre_de_persona
+    for basura in ("ASI COMO", "PERDIDA TOTAL", "ES CANDIDATO", "PADECIMIENTO SI ES", "CUENTA BANCARIA PAPJ",
+                   "PRESION ARTERIAL MM HG PULSO", "QMAE ES", "BENEFICIARIO SI CONSIENTO"):
+        assert not es_nombre_de_persona(basura), basura
+    for nombre in ("MARIA PEREZ GARCIA", "MARIA DE LA LUZ EJEMPLO", "JOAO EJEMPLO DA SILVA", "MUESTRA PEREZ JUAN", "JUAN PEREZ"):
+        assert es_nombre_de_persona(nombre), nombre
+
+
+def test_rescata_nombres_con_cola():
+    from reembolsos.asegurados import limpiar_nombre_de_persona
+    assert limpiar_nombre_de_persona("PEDRO ANTONIO EJEMPLO RUIZ RECLAMACION") == "PEDRO ANTONIO EJEMPLO RUIZ"
+    assert limpiar_nombre_de_persona("ANA SOFIA MUESTRA LARA TOTAL") == "ANA SOFIA MUESTRA LARA"
+    assert limpiar_nombre_de_persona("LUIS PRUEBA DU") == "LUIS PRUEBA"
+    for basura in ("PADECIMIENTO SI ES", "QMAE ES", "SAMA ASEGWADA GASTOS MEDICOS", "DESCRIPCION SERIE HONDA HR", "ASI COMO"):
+        assert limpiar_nombre_de_persona(basura) == "", basura

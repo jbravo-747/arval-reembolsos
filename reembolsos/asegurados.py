@@ -31,9 +31,38 @@ def tipo_persona(nombre):
     return "Persona física" if len(w) >= 3 else "Persona física (nombre incompleto)"
 
 
+# Palabras de formulario que el lector llegó a tomar como nombres («ASI COMO», «PADECIMIENTO SI ES», «CUENTA BANCARIA…»)
+NO_PERSONA |= {"ASI", "COMO", "DE", "LA", "EL", "LOS", "LAS", "Y", "DEL", "UN", "UNA", "NO", "SI", "ES", "MAS", "PERO", "SIN", "SOBRE",
+               "ENTRE", "HASTA", "DESDE", "TODO", "TODOS", "DICHO", "DICHA", "DATOS", "NOMBRE", "FECHA", "PAGO", "TOTAL", "PERDIDA",
+               "CLIENTE", "ASEGURADO", "ASEGURADA", "TITULAR", "GASTOS", "MEDICOS", "MAYORES", "CANDIDATO", "REEMBOLSO", "FACTURA",
+               "RECIBO", "CUENTA", "BANCARIA", "BANCARI", "BANCO", "MONTO", "IMPORTE", "PACIENTE", "PADECIMIENTO", "PADECMENTO", "SOLO",
+               "BENEFICIARIO", "CONSIENTO", "FAMILIAR", "ESPOSO", "ESPOSA", "PARTICULAR", "FAVOR", "DESCRIPCION", "SERIE", "PRODUCCION",
+               "NUEVA", "NUEVO", "INGRESAR", "CODIGO", "PRESION", "ARTERIAL", "PULSO", "PESO", "ALTURA", "SANATORIO", "ARRENDAMIENTO",
+               "ARRENDADORA", "COMPROBANTES", "FISCALES", "CONTINUA", "RECIBIENDO", "DIFERENTE", "GRUPO", "NACIONAL", "RECLAMACION",
+               "ESPANOL", "TRATAMIENTO", "SUMA", "DIA", "ARVAL", "COM", "MX", "ARRENDARORA", "ASOCIACION", "DIAGNOSTICO", "SOLICITANTE"}
+PARTICULAS_NOMBRE = {"DE", "LA", "DEL", "LOS", "LAS", "Y", "MA", "MARIA", "DA", "DAS", "DO", "DOS", "DI", "VAN", "VON"}
+
+
 def es_nombre_de_persona(nombre):
+    """Parece nombre de persona: 2 a 5 palabras significativas de 3+ letras (las partículas «de la», «da» no cuentan)
+    y ninguna palabra de formulario. Mismo criterio que el clasificador (nombreDePersona en embudo.html)."""
     w = normalizar(nombre).split()
-    return 2 <= len(w) <= 5 and not set(w) & NO_PERSONA and all(len(x) >= 2 for x in w)
+    sig = [x for x in w if x not in PARTICULAS_NOMBRE]
+    return 2 <= len(sig) <= 5 and len(w) <= 7 and all(len(x) >= 3 and x not in NO_PERSONA for x in sig)
+
+
+COLA_NO_NOMBRE = {"RECLAMACION", "TOTAL", "NAN"}
+
+
+def limpiar_nombre_de_persona(nombre):
+    """Rescata un nombre al que el lector le pegó una cola («... GALLARDO RECLAMACION», «CARLOS ORTEGA DU»); "" si no es persona."""
+    w = normalizar(nombre).split()
+    while w and not es_nombre_de_persona(" ".join(w)) and (w[-1] in COLA_NO_NOMBRE or len(w[-1]) <= 2):
+        w.pop()
+    limpio = " ".join(w)
+    if not es_nombre_de_persona(limpio):
+        return ""
+    return str(nombre).strip() if limpio == normalizar(nombre) else limpio   # sin recorte: se conserva como venía (acentos, Ñ)
 
 
 def poliza_valida(p):
@@ -365,7 +394,9 @@ def buscador(ruta_excel, semilla=False):
     aseg = [a for a in leer_hoja(ruta_excel, "Asegurados") if aprobado(a) or semilla]
     personas, polizas, exps = defaultdict(list), defaultdict(list), defaultdict(list)
     for p in leer_hoja(ruta_excel, "Personas"):
-        personas[(p["Cartera"], p["Cliente"])].append({"nombre": p["Persona"], "relacion": p["Relación probable"]})
+        nombre = limpiar_nombre_de_persona(p["Persona"])   # filtra también lo que quedó en el Excel antes de endurecer el criterio
+        if nombre and nombre not in [x["nombre"] for x in personas[(p["Cartera"], p["Cliente"])]]:
+            personas[(p["Cartera"], p["Cliente"])].append({"nombre": nombre, "relacion": p["Relación probable"]})
     for p in leer_hoja(ruta_excel, "Polizas"):
         polizas[(p["Cartera"], p["Cliente"])].append({"poliza": str(p["Póliza"]), "aseguradora": p["Aseguradora"]})
     for e in leer_hoja(ruta_excel, "Expedientes"):
