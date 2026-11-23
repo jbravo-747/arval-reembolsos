@@ -64,5 +64,10 @@ def test_detecta_las_carpetas_de_descarga_de_cada_navegador(tmp_path, monkeypatc
     monkeypatch.setenv("LOCALAPPDATA", str(local))
     monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
     monkeypatch.setattr(agente, "carpeta_descargas", lambda: d_win)
-    assert agente.carpetas_descarga() == [d_win, d_edge]
-    assert agente.carpetas_descarga(str(d_edge)) == [d_win, d_edge]   # la extra repetida no se duplica
+    escritorio, documentos = tmp_path / "Escritorio", tmp_path / "Documentos"
+    escritorio.mkdir(); documentos.mkdir()
+    monkeypatch.setattr(agente, "carpeta_escritorio", lambda: escritorio)
+    monkeypatch.setattr(agente, "carpeta_documentos", lambda: documentos)
+    # También Escritorio y Documentos: la app de Claude pregunta dónde guardar cada descarga
+    assert agente.carpetas_descarga() == [d_win, d_edge, escritorio, documentos]
+    assert agente.carpetas_descarga(str(d_edge)) == [d_win, d_edge, escritorio, documentos]   # la extra repetida no se duplica

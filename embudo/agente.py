@@ -107,6 +107,8 @@ def carpetas_descarga(extra=None):
         pass
     if extra:
         rutas.append(Path(extra))
+    # La app de Claude pregunta dónde guardar cada descarga: el paquete puede quedar en Escritorio o Documentos
+    rutas += [carpeta_escritorio(), carpeta_documentos()]
     vistos, salida = set(), []
     for r in rutas:
         clave = str(r).rstrip("\\/").lower()
@@ -244,6 +246,15 @@ def instalar(arval, descargas=None, autoarranque=True, accesos=True):
     log(f"configurado: arval={arval} carpeta extra={descargas or 'ninguna'} autoarranque={autoarranque}")
     iniciar_vigilante(exe)
     return cfg
+
+
+def carpeta_documentos():
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as k:
+            return Path(os.path.expandvars(winreg.QueryValueEx(k, "Personal")[0]))
+    except OSError:
+        return Path.home() / "Documents"
 
 
 def carpeta_escritorio():
