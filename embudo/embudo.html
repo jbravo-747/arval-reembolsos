@@ -220,7 +220,8 @@ a{color:var(--accent)}
   const TIPO_CORTO = {"CFDI factura":"CFDI","CFDI recibo de honorarios":"CFDI-HON","CFDI otro":"CFDI-OTRO","Factura PDF":"FACTURA","Receta":"RECETA",
     "Informe médico":"INFORME","Estudio o resultado":"ESTUDIO","Identificación":"ID","Operación de seguro (no reembolso)":"SEGURO",
     "Formato de reclamación":"RECLAMACION","Comprobante de pago":"PAGO","Finiquito o dictamen":"FINIQUITO","Otro":"DOC"};
-  const TIPO_POR_PALABRA = [["RECETA","Receta"],["INFORME MEDICO","Informe médico"],["NOTA MEDICA","Informe médico"],["RESULTADO","Estudio o resultado"],
+  const TIPO_POR_PALABRA = [["FORMATO DE AVISO","Formato de reclamación"],["AVISO DE ACCIDENTE","Formato de reclamación"],["SOLICITUD DE REEMBOLSO","Formato de reclamación"],
+    ["FORMATO DE RECLAMACION","Formato de reclamación"],["RECETA","Receta"],["INFORME MEDICO","Informe médico"],["NOTA MEDICA","Informe médico"],["RESULTADO","Estudio o resultado"],
     ["LABORATORIO","Estudio o resultado"],["ESTUDIO","Estudio o resultado"],["RADIOLOG","Estudio o resultado"],["FINIQUITO","Finiquito o dictamen"],
     ["DICTAMEN","Finiquito o dictamen"],["ENDOSO","Operación de seguro (no reembolso)"],["CARATULA","Operación de seguro (no reembolso)"],
     ["AVISO DE ACCIDENTE","Formato de reclamación"],["RECLAMACION","Formato de reclamación"],["INFORME DEL MEDICO","Formato de reclamación"],
@@ -233,7 +234,7 @@ a{color:var(--accent)}
   // El grupo se reconoce por el número de póliza (lo más seguro) o por el nombre de la empresa en el documento.
   const GRUPOS = [
     { carpeta: "SAYER CLIENTES", nombre: "Sayer", claves: ["SAYER"], polizas: ["42681726", "42681727", "42682059", "42682997"] },
-    { carpeta: "BANCO DE ALIMENTOS", nombre: "Banco de Alimentos (BAMEX)", claves: ["BANCO DE ALIMENTOS", "BAMEX"], polizas: [] }];
+    { carpeta: "BANCO DE ALIMENTOS", nombre: "Banco de Alimentos (BAMEX)", claves: ["BANCO DE ALIMENTOS", "BANCOS DE ALIMENTOS", "BAMEX", "BAMX"], polizas: [] }];
   const SIN_GRUPO = "ARVAL CLIENTES";
   const POLIZA_GRUPO = "_Póliza de grupo";   // documentos de la póliza de todo el grupo (carátula, endosos, renovación)
   const etiquetaCartera = (c) => (GRUPOS.find(g => g.carpeta === c) || {}).nombre || (c === SIN_GRUPO ? "Sin grupo (individual)" : c || "");
@@ -244,6 +245,14 @@ a{color:var(--accent)}
     return { carpeta: g ? g.carpeta : "", porPoliza: !!p };
   }
   // Un nombre completo puede venir con los apellidos primero («CASARES MERINO EURY»): se aceptan ambos órdenes
+  // Un dependiente solo cuenta si parece nombre de persona: palabras de 3+ letras que no sean palabras comunes
+  const PALABRAS_COMUNES = new Set(("ASI COMO DE LA EL LOS LAS Y PARA POR CON DEL AL EN QUE SE SU SUS UN UNA NO SI ES LO MAS PERO SIN SOBRE ENTRE " +
+    "HASTA DESDE TODO TODOS DICHO DICHA DATOS NOMBRE FECHA FIRMA PAGO TOTAL PERDIDA CLIENTE ASEGURADO ASEGURADA TITULAR POLIZA SEGURO GASTOS " +
+    "MEDICOS MAYORES CANDIDATO REEMBOLSO FACTURA RECIBO CUENTA BANCO MONTO IMPORTE PACIENTE HOSPITAL").split(" "));
+  function nombreDePersona(p){
+    const t = normaliza(p).split(" ").filter(w => w && !["DE", "LA", "DEL", "LOS", "LAS", "Y", "MA", "MARIA", "DA", "DAS", "DO", "DOS", "DI", "VAN", "VON"].includes(w));   // partículas de nombre
+    return t.length >= 2 && t.every(w => w.length >= 3 && !PALABRAS_COMUNES.has(w));
+  }
   function variantes(nombre){
     const t = normaliza(nombre).split(" ").filter(Boolean);
     const v = [t.join(" ")];
@@ -274,7 +283,7 @@ a{color:var(--accent)}
       // «APELLIDO1 APELLIDO2 NOMBRE» -> «NOMBRE APELLIDO1» y «NOMBRE APELLIDO1 APELLIDO2 -> NOMBRE APELLIDO1»: así se escribe a mano
       const nomApe = t.length >= 3 ? [[t[t.length - 1], t[0]].join(" "), [t[0], t[1]].join(" ")] : [];
       return { ...a, _nombre: normaliza(a.nombre), _nombres: [...variantes(a.nombre), ...cortos], _nomApe: nomApe, _tokens: fichas(a.nombre), _rfc: normaliza(a.rfc).replace(/ /g, ""),
-        _personas: (a.personas || []).map(p => ({ nombre: p, _n: normaliza(p), _ns: variantes(p), _tokens: fichas(p) })),
+        _personas: (a.personas || []).filter(nombreDePersona).map(p => ({ nombre: p, _n: normaliza(p), _ns: variantes(p), _tokens: fichas(p) })),
         _polizas: (a.polizas || []).map(p => normaliza(p).replace(/ /g, "")).filter(p => p.length >= 5),
         _txt: normaliza([a.nombre, a.rfc, a.cliente, ...(a.personas || []), ...(a.polizas || [])].join(" ")) };
     });
@@ -664,7 +673,8 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
       it.campos_nombre = campos.map(c => c.clave);
       ia = await preguntarIA(it, texto, locales, verImagen || recortes.length ? [...recortes.map(c => c.cv), ...imagenes] : [], recortes.map(c => c.clave));
       if (ia) {
-        if (TIPOS.includes(ia.tipo)) it.tipo = ia.tipo;
+        const esFormato = it.tipo === "Formato de reclamación" && /FORMATO DE AVISO|AVISO DE ACCIDENTE|SOLICITUD DE REEMBOLSO|FORMATO DE RECLAMACION/.test(N);
+        if (TIPOS.includes(ia.tipo) && !esFormato) it.tipo = ia.tipo;
         if (/^20\d{2}-\d{2}-\d{2}$/.test(ia.fecha_doc || "")) it.fecha_doc = ia.fecha_doc;
         if (ia.rfc) it.rfc = String(ia.rfc).toUpperCase().replace(/[^A-Z0-9&Ñ]/g, "");
         if (ia.total != null && ia.total !== "") it.total = String(ia.total);
