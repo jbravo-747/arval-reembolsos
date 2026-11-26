@@ -471,7 +471,12 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
     const n = Math.min(pdf.numPages, MAX_PAGINAS);
     let texto = "", conTexto = 0, conOcr = 0, sumaConf = 0, rot = 0;
     const imagenes = [], campos = [];
-    for (let i = 1; i <= n; i++) {
+    // Documento largo: si en las primeras 15 páginas no apareció nadie claro, se lee también la última
+    // (firma, datos del asegurado o carta de cierre suelen ir al final)
+    const paginas = [...Array(n).keys()].map(k => k + 1);
+    let ultimaLeida = false;
+    for (let k = 0; k < paginas.length; k++) {
+      const i = paginas[k];
       const pag = await pdf.getPage(i);
       const t = (await pag.getTextContent()).items.map(x => x.str).join(" ");
       if (t.replace(/\s/g, "").length >= 40) { texto += t + "\n"; conTexto++; }
@@ -484,15 +489,20 @@ importScripts("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.j
         rot = r.rot;   // las demás páginas suelen venir igual de giradas
         texto += r.texto + "\n"; conOcr++; sumaConf += r.confianza;
         if (campos.length < 2) campos.push(...recortarCampos(r.cv, r.lineas).filter(c => !campos.some(x => x.clave === c.clave)));
-        if (imagenes.length < 2) imagenes.push(r.cv);
+        if (imagenes.length < 2 || i === pdf.numPages) imagenes.splice(i === pdf.numPages ? 0 : imagenes.length, 0, r.cv);
       }
-      it.avance = 0.2 + 0.55 * i / n; pintar();
+      it.avance = 0.2 + 0.55 * Math.min(1, (k + 1) / n); pintar();
+      if (k === paginas.length - 1 && !ultimaLeida && pdf.numPages > n) {
+        const top = coincidencias(texto)[0];
+        if (!top || top.score < 90) { paginas.push(pdf.numPages); ultimaLeida = true; }
+      }
     }
+    if (imagenes.length > 2) imagenes.length = 2;
     const confOcr = conOcr ? Math.round(sumaConf / conOcr) : 100;
     const calidad = conOcr ? calidadDe(confOcr, palabrasReales(texto)) : (palabrasReales(texto) >= 8 ? "buena" : "mala");
     const metodo = conOcr && conTexto ? "texto del PDF + OCR" : conOcr ? "OCR (escaneo)" : "texto del PDF";
     it._pdf = pdf;
-    return { texto, metodo, calidad, confOcr: conOcr ? confOcr : null, imagenes, campos, paginas: pdf.numPages };
+    return { texto, metodo, calidad, confOcr: conOcr ? confOcr : null, imagenes, campos, paginas: pdf.numPages, ultimaLeida };
   }
   async function paginasComoImagen(pdf, n){
     const out = [];
@@ -675,7 +685,7 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
         if (!/\.pdf$/i.test(it.nombre)) { it.avance = 0.3; pintar(); }
         const r = /\.pdf$/i.test(it.nombre) ? await leerPdf(it) : /\.docx$/i.test(it.nombre) ? await leerWord(it) : await leerFoto(it);
         texto = r.texto; it.metodo = r.metodo; it.calidad_lectura = r.calidad; it.conf_ocr = r.confOcr; imagenes = r.imagenes || []; campos = r.campos || [];
-        if (r.paginas > MAX_PAGINAS) it.aviso = `Se leyeron las primeras ${MAX_PAGINAS} de ${r.paginas} páginas`;
+        if (r.paginas > MAX_PAGINAS) it.aviso = `Se leyeron las primeras ${MAX_PAGINAS}${r.ultimaLeida ? " y la última" : ""} de ${r.paginas} páginas`;
       }
       if (cfdi) it.calidad_lectura = "buena";
     } catch (e) {
