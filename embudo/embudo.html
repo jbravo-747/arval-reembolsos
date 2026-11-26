@@ -192,6 +192,12 @@ a{color:var(--accent)}
   </section>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="capa" id="visorCapa" role="dialog" aria-modal="true" aria-label="Ver archivo" hidden>
+  <div class="capa-caja">
+    <div class="capa-barra"><span style="min-width:0"><strong id="visorTitulo" style="overflow-wrap:anywhere"></strong><span class="muted" id="visorRuta" style="display:block;font-size:.82rem;overflow-wrap:anywhere"></span></span><button class="btn min" type="button" id="cerrarVisor">Cerrar</button></div>
+    <div class="capa-cuerpo" id="visorHost" style="overflow:auto;padding:12px;text-align:center"></div>
+  </div>
+</div>
 <div class="capa" id="manualCapa" role="dialog" aria-modal="true" aria-label="Manual del Clasificador" hidden>
   <div class="capa-caja">
     <div class="capa-barra"><strong>Manual del Clasificador</strong><button class="btn min" type="button" id="cerrarManual">Cerrar</button></div>
@@ -950,7 +956,8 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
       <span class="k">${esc(c.cliente)}</span><span class="s">${c.cliente === it.sugerido ? "sugerido" : ""}</span>
       <span class="r">${esc(etiquetaCartera(c.cartera || estado.carteraDe.get(c.cliente)))} · ${esc(c.razon)}</span></button>`).join("");
     return `<div class="archivo duda" data-id="${esc(it.id)}">
-      <div class="q">¿De quién es <span style="overflow-wrap:anywhere">${esc(it.nombre)}</span>?</div>
+      <div class="fila"><div class="q">¿De quién es <span style="overflow-wrap:anywhere">${esc(it.nombre)}</span>?</div><button class="btn sec min" type="button" data-accion="ver">Ver archivo</button></div>
+      ${it.carpeta ? `<div class="m"><span>origen: ${esc(it.carpeta + "/" + it.nombre)}</span></div>` : ""}
       <div class="m"><span>${esc(it.tipo || "")}</span>${it.fecha_doc ? `<span>${esc(it.fecha_doc)}</span>` : ""}<span>${esc(it.metodo || "")}</span>${it.nombre_leido ? `<span>leído: “${esc(it.nombre_leido)}”</span>` : ""}${pillConf(it.confianza)}</div>
       <div class="m"><span>${esc(it.motivo || "")}</span></div>
       ${it.aviso ? `<div class="m" style="color:var(--warn)"><span>${esc(it.aviso)}</span></div>` : ""}
@@ -976,8 +983,9 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
     return `<div class="archivo" data-id="${esc(it.id)}">
       <div class="fila"><span class="nom">${esc(it.nombre)}</span>${pillConf(it.cliente ? it.confianza : "")}</div>
       <div class="m"><span><b style="color:var(--fg)">${esc(it.nivel === "grupo" ? "Póliza de grupo · " + etiquetaCartera(it.grupo) : it.cliente || (it.candidato_cliente ? "Alta pendiente: " + it.candidato_cliente : "Sin asegurado"))}</b></span><span>${esc(it.tipo)}</span>${it.fecha_doc ? `<span>${esc(it.fecha_doc)}</span>` : ""}<span>${esc(it.decidido_por === "embudo" ? it.identificado_por : it.decidido_por)}</span></div>
+      ${it.carpeta ? `<div class="m"><span>origen: ${esc(it.carpeta + "/" + it.nombre)}</span></div>` : ""}
       <div class="ruta">${esc(destinoDe(it))}</div>
-      <div class="fila"><span class="muted" style="font-size:.84rem">${esc(it.aviso || "")}</span><button class="btn sec min" type="button" data-accion="reabrir">Cambiar</button></div></div>`;
+      <div class="fila"><span class="muted" style="font-size:.84rem">${esc(it.aviso || "")}</span><span style="display:flex;gap:8px"><button class="btn sec min" type="button" data-accion="ver">Ver archivo</button><button class="btn sec min" type="button" data-accion="reabrir">Cambiar</button></span></div></div>`;
   }
   function tarjetaCurso(it){
     return `<div class="archivo" data-id="${esc(it.id)}">
@@ -1054,6 +1062,7 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
   // ---------- Eventos ----------
   document.addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-accion]"); if (!b) return;
+    if (b.dataset.accion === "ver") { const c = b.closest("[data-id]"); if (c) verArchivo(c.dataset.id); return; }
     if (b.dataset.accion === "olvidar") return olvidar(b.dataset.leido);
     const caja = b.closest("[data-id]"); const id = caja && caja.dataset.id;
     const a = b.dataset.accion;
@@ -1074,6 +1083,54 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
     const t = document.documentElement.getAttribute("data-theme");
     $("manualHost").classList.toggle("claro", t === "light"); $("manualHost").classList.toggle("oscuro", t === "dark");
   }
+  // ---------- Visor: el archivo que se está clasificando (está en memoria; el navegador no puede abrir rutas del disco) ----------
+  let visorUrls = [], visorTurno = 0;
+  function cerrarVisor(){ $("visorCapa").hidden = true; $("visorHost").innerHTML = ""; visorUrls.forEach(u => URL.revokeObjectURL(u)); visorUrls = []; visorTurno++; }
+  async function verArchivo(id){
+    const it = estado.items.get(id);
+    if (!it || !it.file) { toast("El archivo ya no está en esta pestaña: ábrelo desde el historial (OneDrive)"); return; }
+    const turno = ++visorTurno, host = $("visorHost");
+    $("visorTitulo").textContent = it.nombre;
+    $("visorRuta").textContent = it.carpeta ? `origen: ${it.carpeta}/${it.nombre}` : "";
+    host.innerHTML = '<p class="muted">Abriendo…</p>';
+    $("visorCapa").hidden = false; $("cerrarVisor").focus();
+    try {
+      const ancho = Math.max(320, Math.min(host.clientWidth - 24, 1100));
+      if (/\.pdf$/i.test(it.nombre)) {
+        const pdf = await pdfjsLib.getDocument({ data: await it.file.arrayBuffer(), isEvalSupported: false }).promise;
+        host.innerHTML = pdf.numPages > 40 ? `<p class="muted">Se muestran las primeras 40 de ${pdf.numPages} páginas.</p>` : "";
+        for (let i = 1; i <= Math.min(pdf.numPages, 40); i++) {
+          if (turno !== visorTurno) return;
+          const pag = await pdf.getPage(i), base = pag.getViewport({ scale: 1 });
+          const vp = pag.getViewport({ scale: Math.min(2, ancho / base.width) * (window.devicePixelRatio || 1) });
+          const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+          cv.style.cssText = `width:${Math.round(vp.width / (window.devicePixelRatio || 1))}px;max-width:100%;display:block;margin:0 auto 12px;box-shadow:0 1px 6px rgba(0,0,0,.25);background:#fff`;
+          cv.setAttribute("aria-label", `Página ${i} de ${pdf.numPages}`);
+          host.appendChild(cv);
+          await pag.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+        }
+      } else if (/\.xml$/i.test(it.nombre)) {
+        host.innerHTML = `<pre style="text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85rem">${esc(await it.file.text())}</pre>`;
+      } else if (/\.docx$/i.test(it.nombre)) {
+        await cargarScript("https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js");
+        const r = await window.mammoth.extractRawText({ arrayBuffer: await it.file.arrayBuffer() });
+        host.innerHTML = `<pre style="text-align:left;white-space:pre-wrap;overflow-wrap:anywhere">${esc(r.value || "(sin texto)")}</pre>`;
+      } else {
+        let blob = it.file;
+        if (/\.(heic|heif)$/i.test(it.nombre)) {
+          await cargarScript("https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js");
+          const b = await window.heic2any({ blob, toType: "image/jpeg", quality: 0.9 }); blob = Array.isArray(b) ? b[0] : b;
+        }
+        const url = URL.createObjectURL(blob); visorUrls.push(url);
+        host.innerHTML = "";
+        const img = new Image(); img.src = url; img.alt = it.nombre; img.style.cssText = "max-width:100%;height:auto;image-orientation:from-image";
+        host.appendChild(img);
+      }
+    } catch (e) {
+      if (turno === visorTurno) host.innerHTML = `<p class="muted">No se pudo mostrar este archivo (${esc(String(e && e.message || e))}).</p>`;
+    }
+  }
+
   async function abrirManual(){
     $("manualCapa").hidden = false; $("cerrarManual").focus();
     if (manualSombra) return;
@@ -1106,6 +1163,9 @@ ${texto.slice(0, MAX_TEXTO_IA) || "(el OCR no pudo leer texto; usa la imagen)"}`
   $("cerrarManual").addEventListener("click", cerrarManual);
   $("manualCapa").addEventListener("click", (e) => { if (e.target === $("manualCapa")) cerrarManual(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("manualCapa").hidden) cerrarManual(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("visorCapa").hidden) cerrarVisor(); });
+  $("cerrarVisor").addEventListener("click", cerrarVisor);
+  $("visorCapa").addEventListener("click", (e) => { if (e.target.id === "visorCapa") cerrarVisor(); });
   const boca = $("boca");
   ["dragenter", "dragover"].forEach(t => boca.addEventListener(t, (e) => { e.preventDefault(); boca.classList.add("sobre"); }));
   ["dragleave", "drop"].forEach(t => boca.addEventListener(t, (e) => { e.preventDefault(); boca.classList.remove("sobre"); }));
